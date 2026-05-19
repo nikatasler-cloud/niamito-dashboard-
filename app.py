@@ -598,7 +598,7 @@ with tab2:
                 x=stock_mkt["week"], y=stock_mkt["stock_cases"],
                 fill="tozeroy", mode="lines",
                 line=dict(color=LAVEN, width=2),
-                fillcolor=LAVEN + "55",
+                fillcolor="rgba(179, 184, 217, 0.33)",
                 name="Stock (cases)",
                 hovertemplate="Week: %{x|%d %b}<br>Stock: %{y:,} cases<extra></extra>",
             ))
