@@ -48,81 +48,290 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── backgrounds ──────────────────────────────── */
-.stApp { background-color: #EDE3D8; }
-section[data-testid="stSidebar"] { background-color: #2C1A0E !important; }
-section[data-testid="stSidebar"] * { color: #EDE3D8 !important; }
-section[data-testid="stSidebar"] .stFileUploader label { color: #EDE3D8 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
 
-/* ── layout ───────────────────────────────────── */
-.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
+/* ── global font ──────────────────────────────── */
+html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, input {
+    font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+}
+
+/* ── backgrounds ──────────────────────────────── */
+.stApp { background-color: #F0E8DF; }
+.block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1440px; }
+
+/* ── sidebar shell ────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: #0f0905 !important;
+    border-right: 1px solid rgba(255,255,255,0.05) !important;
+}
+/* collapse button */
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
+    color: rgba(237,227,216,0.3) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover {
+    color: rgba(237,227,216,0.7) !important;
+    background: transparent !important;
+}
+/* all text defaults */
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] label { color: rgba(237,227,216,0.75) !important; }
+
+/* ── sidebar upload ────────────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    font-size: 11px !important;
+    color: rgba(237,227,216,0.35) !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.3px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    border-radius: 14px !important;
+    transition: all 0.2s !important;
+    padding: 14px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
+    border-color: rgba(237,227,216,0.25) !important;
+    background: rgba(255,255,255,0.07) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+    background: rgba(237,227,216,0.92) !important;
+    color: #0f0905 !important;
+    border: none !important;
+    border-radius: 999px !important;
+    font-weight: 700 !important;
+    font-size: 11.5px !important;
+    letter-spacing: 0.3px !important;
+    padding: 7px 20px !important;
+    transition: all 0.15s !important;
+    width: 100% !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
+    background: #ffffff !important;
+    transform: translateY(-1px) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
+    display: none !important;
+}
+
+/* ── sidebar multiselect ──────────────────────── */
+section[data-testid="stSidebar"] span[data-baseweb="tag"] {
+    background: rgba(237,227,216,0.10) !important;
+    border: 1px solid rgba(237,227,216,0.18) !important;
+    border-radius: 999px !important;
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    padding: 2px 10px !important;
+    color: rgba(237,227,216,0.9) !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(237,227,216,0.12) !important;
+    border-radius: 12px !important;
+    transition: all 0.15s !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within {
+    border-color: rgba(237,227,216,0.30) !important;
+    background: rgba(255,255,255,0.08) !important;
+}
+
+/* ── sidebar radio → pill toggles ─────────────── */
+section[data-testid="stSidebar"] [data-testid="stRadio"] > div {
+    gap: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 12px !important;
+    padding: 9px 14px !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    transition: all 0.15s !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
+    background: rgba(255,255,255,0.09) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
+    background: rgba(237,221,210,0.12) !important;
+    border-color: rgba(237,221,210,0.30) !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) p {
+    color: #EDE3D8 !important;
+    font-weight: 600 !important;
+}
+/* hide the native radio circle */
+section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] p {
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    margin: 0 !important;
+    color: rgba(237,227,216,0.65) !important;
+}
 
 /* ── metric cards ─────────────────────────────── */
 div[data-testid="metric-container"] {
-    background: #F9F4EF;
-    border: 1.5px solid #d4c5b0;
-    border-radius: 14px;
-    padding: 14px 18px;
+    background: #FFFFFF;
+    border: none;
+    border-radius: 20px;
+    padding: 22px 24px 20px;
+    box-shadow: 0 2px 8px rgba(44,26,14,0.05), 0 8px 24px rgba(44,26,14,0.09);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+div[data-testid="metric-container"]:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(44,26,14,0.07), 0 16px 40px rgba(44,26,14,0.13);
 }
 div[data-testid="metric-container"] label {
-    color: #6b4c30 !important;
+    color: #a08060 !important;
     font-size: 11px !important;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px;
+    text-transform: none;
 }
 div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #2C1A0E !important;
-    font-size: 28px !important;
+    color: #1C1008 !important;
+    font-size: 30px !important;
     font-weight: 700 !important;
+    letter-spacing: -1px;
+    line-height: 1.1;
 }
 div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 12px !important;
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    margin-top: 6px !important;
+    opacity: 0.85;
 }
 
-/* ── tabs ─────────────────────────────────────── */
+/* ── tabs — pill style ────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px;
-    border-bottom: 2px solid #c8b89a;
-    background: transparent;
+    gap: 3px;
+    background: rgba(44,26,14,0.08);
+    border-radius: 999px;
+    padding: 4px 5px;
+    border-bottom: none !important;
+    display: inline-flex;
+    margin-bottom: 20px;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #6b4c30;
-    border-radius: 8px 8px 0 0;
-    font-size: 13px;
-    padding: 8px 20px;
+    color: #7a5c3c;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 7px 18px;
     background: transparent;
     border: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.stTabs [data-baseweb="tab"]:hover {
+    color: #2C1A0E;
+    background: rgba(255,255,255,0.5);
 }
 .stTabs [aria-selected="true"] {
-    color: #2C1A0E !important;
+    color: #F0E8DF !important;
     font-weight: 700 !important;
-    background: #F9F4EF !important;
+    background: #2C1A0E !important;
+    box-shadow: 0 1px 4px rgba(44,26,14,0.3) !important;
 }
+.stTabs [data-baseweb="tab-highlight"] { display: none !important; }
+.stTabs [data-baseweb="tab-border"]    { display: none !important; }
 
-/* ── typography ───────────────────────────────── */
-h1 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 20px !important; }
-h2 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 15px !important; margin-top: 1rem !important; }
-h3 { color: #2C1A0E !important; font-size: 13px !important; font-weight: 600 !important; }
-
-/* ── info banner ──────────────────────────────── */
-.demo-banner {
-    background: #EDD96A;
-    color: #2C1A0E;
-    border-radius: 10px;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 14px;
-    text-align: center;
+/* ── section headings ─────────────────────────── */
+h1 {
+    color: #1C1008 !important;
+    font-family: Georgia, serif !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.4px;
 }
+h2 {
+    color: #1C1008 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-top: 1.4rem !important;
+    margin-bottom: 0.5rem !important;
+    opacity: 0.75;
+}
+h3 { color: #1C1008 !important; font-size: 13px !important; font-weight: 600 !important; }
 
 /* ── divider ──────────────────────────────────── */
-hr { border-color: #c8b89a !important; margin: 8px 0 !important; }
+hr { border: none !important; border-top: 1px solid rgba(44,26,14,0.12) !important; margin: 12px 0 !important; }
 
 /* ── dataframe ────────────────────────────────── */
-.stDataFrame { border-radius: 10px; overflow: hidden; }
+.stDataFrame {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(44,26,14,0.06), 0 4px 14px rgba(44,26,14,0.07);
+}
+
+/* ── chart captions ───────────────────────────── */
+.chart-caption {
+    font-size: 12px;
+    color: #9a7a58;
+    line-height: 1.6;
+    margin: -6px 0 10px;
+    font-weight: 400;
+    max-width: 680px;
+}
+
+/* ── info/note boxes ──────────────────────────── */
+.info-note {
+    background: rgba(255,255,255,0.7);
+    border-left: 3px solid #B3B8D9;
+    border-radius: 0 12px 12px 0;
+    padding: 12px 18px;
+    font-size: 12.5px;
+    color: #4a3020;
+    margin-bottom: 16px;
+    line-height: 1.65;
+    box-shadow: 0 1px 6px rgba(44,26,14,0.05);
+}
+
+/* ── status bar / header strip ────────────────── */
+.status-bar {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(44,26,14,0.10);
+    border-radius: 12px;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: #6b4c30;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+/* ── demo badge ───────────────────────────────── */
+.demo-badge {
+    background: #EDD96A;
+    color: #1C1008;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    display: inline-block;
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+def caption(text):
+    st.markdown(f"<p class='chart-caption'>{text}</p>", unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -131,20 +340,32 @@ hr { border-color: #c8b89a !important; margin: 8px 0 !important; }
 def base_layout(title="", height=340, legend_below=True):
     leg = dict(
         orientation="h", y=-0.20, x=0,
-        font=dict(size=10, color=BROWN),
+        font=dict(size=10.5, color="#5a3d22", family="Inter, system-ui, sans-serif"),
         bgcolor="rgba(0,0,0,0)",
-    ) if legend_below else dict(font=dict(size=10, color=BROWN), bgcolor="rgba(0,0,0,0)")
+    ) if legend_below else dict(
+        font=dict(size=10.5, color="#5a3d22", family="Inter, system-ui, sans-serif"),
+        bgcolor="rgba(0,0,0,0)",
+    )
     return dict(
-        title=dict(text=title, font=dict(color=BROWN, size=13, family="Georgia"), x=0, pad=dict(l=6)),
+        title=dict(
+            text=title,
+            font=dict(color="#1C1008", size=13, family="Inter, system-ui, sans-serif",
+                      weight=600),
+            x=0, pad=dict(l=4),
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor=CREAM,
-        font=dict(color=BROWN, size=11, family="Arial"),
+        plot_bgcolor="#FFFFFF",
+        font=dict(color="#5a3d22", size=11, family="Inter, system-ui, sans-serif"),
         height=height,
-        margin=dict(l=12, r=12, t=44, b=20),
+        margin=dict(l=12, r=12, t=46, b=20),
         legend=leg,
-        xaxis=dict(gridcolor="#e8ddd0", gridwidth=1, zeroline=False, linecolor="#c8b89a"),
-        yaxis=dict(gridcolor="#e8ddd0", gridwidth=1, zeroline=False, linecolor="#c8b89a"),
-        hoverlabel=dict(bgcolor=CREAM, bordercolor=BROWN, font=dict(color=BROWN, size=11)),
+        xaxis=dict(gridcolor="#f0e8e0", gridwidth=1, zeroline=False,
+                   linecolor="#e0d4c8", tickfont=dict(size=10.5)),
+        yaxis=dict(gridcolor="#f0e8e0", gridwidth=1, zeroline=False,
+                   linecolor="#e0d4c8", tickfont=dict(size=10.5)),
+        hoverlabel=dict(bgcolor="#FFFFFF", bordercolor="#d4c5b0",
+                        font=dict(color="#1C1008", size=11.5,
+                                  family="Inter, system-ui, sans-serif")),
     )
 
 
@@ -318,50 +539,35 @@ def load_excel(file):
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-        <div style='text-align:center; padding: 12px 0 6px;'>
-            <span style='font-size:32px;'>🌿</span><br>
-            <span style='font-family:Georgia; font-size:18px; font-weight:bold; color:#EDE3D8;'>Niamito</span><br>
-            <span style='font-size:11px; color:#a08060; letter-spacing:1px; text-transform:uppercase;'>
-                Marketing Intelligence
-            </span>
+        <div style='padding: 32px 4px 24px; text-align:center;'>
+            <div style='font-family:Georgia,serif; font-size:22px; font-weight:700;
+                        color:#EDE3D8; letter-spacing:-0.4px; line-height:1;'>Niamito</div>
+            <div style='font-size:9px; color:rgba(237,227,216,0.28); letter-spacing:3px;
+                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Marketing Intelligence</div>
         </div>
-        <hr style='border-color:#4a3020; margin:10px 0 16px;'>
     """, unsafe_allow_html=True)
 
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Data Source</p>", unsafe_allow_html=True)
-
     uploaded = st.file_uploader(
-        "Upload Niamito_Master_Tables.xlsx",
+        "Data source",
         type=["xlsx"],
-        help="Download from Google Drive → drag here to refresh",
+        help="Upload Niamito_Master_Tables.xlsx from Google Drive",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Market Filter</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
 
     market_filter = st.multiselect(
         "Markets",
         options=["SI", "HR", "DE"],
         default=["SI", "HR", "DE"],
-        label_visibility="collapsed",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Period</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
 
     period = st.radio(
         "Period",
         options=["All data", "Last 4 weeks", "Last 8 weeks", "Last 13 weeks"],
         index=0,
-        label_visibility="collapsed",
     )
-
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("""
-        <div style='font-size:10px; color:#6b4c30; text-align:center; padding-bottom:10px;'>
-            Refresh: upload new Excel<br>from Google Drive
-        </div>
-    """, unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -406,29 +612,28 @@ if period != "All data":
 # ──────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ──────────────────────────────────────────────────────────────────────────────
-col_logo, col_title = st.columns([0.06, 0.94])
-with col_title:
-    st.markdown("<h1>Niamito · Marketing Intelligence</h1>", unsafe_allow_html=True)
-    st.markdown(
-        f"<p style='color:{MID}; font-size:12px; margin-top:-6px;'>"
-        f"{'⚠️ Demo data — upload your Master Tables to see live numbers' if demo_mode else '✓ Live data'}"
-        f"  ·  Markets: {', '.join(market_filter) if market_filter else 'none'}"
-        f"  ·  Period: {period}</p>",
-        unsafe_allow_html=True,
-    )
-
-st.markdown("<hr>", unsafe_allow_html=True)
+badge = '<span class="demo-badge">Demo data</span>' if demo_mode else '<span class="demo-badge" style="background:#A8D99A;">Live data</span>'
+mkts  = ', '.join(market_filter) if market_filter else 'none'
+st.markdown(
+    f"<div style='display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap;'>"
+    f"  <h1 style='margin:0; font-family:Georgia,serif; font-size:22px; font-weight:700; color:#1C1008; letter-spacing:-0.4px;'>Niamito <span style='color:#8a6a4a; font-weight:400;'>·</span> Marketing Intelligence</h1>"
+    f"  {badge}"
+    f"  <span style='font-size:11.5px; color:#8a6a4a; font-weight:500;'>Markets: <b style='color:#1C1008;'>{mkts}</b></span>"
+    f"  <span style='font-size:11.5px; color:#8a6a4a; font-weight:500;'>Period: <b style='color:#1C1008;'>{period}</b></span>"
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊  Overview",
-    "🔄  Sales Funnel",
-    "📣  Marketing ROI",
-    "💸  Value Leakage",
-    "📦  SKU Performance",
+    "Overview",
+    "Sales Funnel",
+    "Marketing ROI",
+    "Value Leakage",
+    "SKU Performance",
 ])
 
 
@@ -438,14 +643,15 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
 
     # ── KPI row ──────────────────────────────────────────
-    total_so_rev  = so_f["sellout_revenue"].sum()
-    total_mkt_spd = mkt_f["total_spend"].sum()
-    blended_roas  = (mkt_f["attributed_sales"].sum() / max(mkt_f["total_spend"].sum(), 1))
-    total_net_rev = prim_f["net_revenue"].sum()
-    total_gross   = prim_f["gross_revenue"].sum()
+    total_so_rev     = so_f["sellout_revenue"].sum()
+    total_so_bottles = so_f["bottles_sold"].sum()
+    total_mkt_spd    = mkt_f["total_spend"].sum()
+    blended_roas     = (mkt_f["attributed_sales"].sum() / max(mkt_f["total_spend"].sum(), 1))
+    total_net_rev    = prim_f["net_revenue"].sum()
+    total_gross      = prim_f["gross_revenue"].sum()
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Sell-Out Revenue",     f"€{total_so_rev:,.0f}",  delta="vs prior period")
+    k1.metric("Sell-Out Units",       f"{total_so_bottles:,.0f} btl", delta=f"€{total_so_rev:,.0f} consumer value")
     k2.metric("Total Net Revenue",    f"€{total_net_rev:,.0f}", delta=f"Gross €{total_gross:,.0f}")
     k3.metric("Marketing Spend",      f"€{total_mkt_spd:,.0f}", delta="incl. listing fees")
     k4.metric("Blended ROAS",         f"{blended_roas:.1f}×",   delta="BTL campaigns only" if blended_roas > 0 else None)
@@ -456,6 +662,8 @@ with tab1:
     c_left, c_right = st.columns([0.6, 0.4])
 
     with c_left:
+        caption("Consumer-level demand by market — what retailers are actually selling through to end customers. "
+                "Rising lines confirm retail pull is building. Diverging markets signal where to shift focus or investment.")
         so_weekly = (
             so_f.groupby(["week", "market"])["sellout_revenue"]
             .sum().reset_index()
@@ -477,6 +685,8 @@ with tab1:
         st.plotly_chart(fig, use_container_width=True)
 
     with c_right:
+        caption("How the marketing budget is distributed across channels. A heavy trade/listing weight means you're paying for shelf space; "
+                "a BTL-digital weight means you're investing in consumer activation.")
         # Spend by channel donut
         ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
         ch_spend = ch_spend[ch_spend["total_spend"] > 0].sort_values("total_spend", ascending=False)
@@ -498,6 +708,8 @@ with tab1:
         st.plotly_chart(fig2, use_container_width=True)
 
     # ── Primary revenue trend ─────────────────────────────
+    caption("What Niamito invoices to distributors and retailers each week. "
+            "The gap between gross (light) and net (dark) is trade discount — a widening gap signals growing distributor pressure on your pricing.")
     prim_weekly = prim_f.groupby("week").agg(
         gross=("gross_revenue", "sum"),
         net=("net_revenue", "sum"),
@@ -552,12 +764,17 @@ with tab2:
 
     funnel_type = "3-tier" if sel_mkt in ["SI", "HR"] else "2-tier"
 
+    so_bottles_mkt = so_mkt["bottles_sold"].sum()
+
     fl, fm, fr = st.columns(3)
     fl.metric("Primary Sales (Gross)", f"€{p_rev:,.0f}", help="Company invoices to distributor/retailer")
     fm.metric("Net Revenue (after discounts)", f"€{n_rev:,.0f}", delta=f"–{(p_rev - n_rev) / max(p_rev,1)*100:.1f}% trade disc.")
-    fr.metric("Sell-Out Revenue (consumer)", f"€{so_rev:,.0f}", delta=f"{fill_rate:.0f}% sell-through")
+    fr.metric("Sell-Out Units", f"{so_bottles_mkt:,.0f} btl", delta=f"{fill_rate:.0f}% sell-through")
 
     st.markdown("")
+    caption(f"Revenue from Niamito's invoice (gross) down to what consumers pay at retail. "
+            f"The {'distributor margin and ' if funnel_type == '3-tier' else ''}retailer margin sits between Net and Sell-Out — "
+            f"that money leaves the value chain before reaching us.")
 
     # ── Funnel chart ──────────────────────────────────────
     if funnel_type == "3-tier":
@@ -593,6 +810,8 @@ with tab2:
 
         c_s1, c_s2 = st.columns([0.65, 0.35])
         with c_s1:
+            caption("Cases held at the distributor at end of each week. Staying below the threshold (1.5× average stock) "
+                    "means healthy throughput. Spikes above it signal slow-moving inventory — a risk for product freshness and cash flow.")
             fig_s = go.Figure()
             fig_s.add_trace(go.Scatter(
                 x=stock_mkt["week"], y=stock_mkt["stock_cases"],
@@ -620,7 +839,8 @@ with tab2:
             st.markdown(f"<p style='font-size:13px;'>Latest week: <b>{current:.1f}×</b> — {flag}</p>",
                         unsafe_allow_html=True)
 
-            # Mini bar: in vs out
+            caption("Weekly case flow. In = Niamito shipments to distributor; Out = distributor to retailers. "
+                    "Persistent In > Out means stock is accumulating.")
             fig_io = go.Figure()
             fig_io.add_trace(go.Bar(x=stock_mkt["week"], y=stock_mkt["cases_in"],
                                     name="In", marker_color=GREEN, opacity=0.8))
@@ -641,7 +861,18 @@ with tab2:
 with tab3:
 
     st.markdown("<h2>Campaign Performance</h2>", unsafe_allow_html=True)
+    st.markdown("""
+        <div class='info-note'>
+            <b>How ROAS is calculated:</b>
+            ROAS = Attributed Sell-Out Revenue ÷ Total Campaign Spend.<br>
+            <i>Total spend</i> includes media spend + listing fees + trade discounts.
+            <i>Attributed revenue</i> is estimated sell-out driven by the campaign during its run window.<br>
+            <b>Break-even = 1×</b> (spend recovered) · <b>Niamito target = 2×</b> · Listing fees and OOH are excluded from ROAS where attribution is not possible.
+        </div>
+    """, unsafe_allow_html=True)
 
+    caption("Every campaign ranked by return. Green = we got back more than 2× what we spent. "
+            "Yellow = we covered costs but margin was thin. Red = we spent more than we generated — review the channel or targeting before repeating.")
     # ── ROAS by campaign ──────────────────────────────────
     roas_df = mkt_f[mkt_f["roas"].notna()].copy()
     roas_df = roas_df.sort_values("roas", ascending=True)
@@ -704,6 +935,9 @@ with tab3:
 
     # ── Spend breakdown ───────────────────────────────────
     st.markdown("<h2>Spend Mix</h2>", unsafe_allow_html=True)
+    caption("ATL (out-of-home, TV) builds broad awareness but is hard to attribute. "
+            "BTL-Digital and influencer spend is more targeted and attributable. "
+            "Trade fees (listing, promo) are the cost of accessing shelf space — necessary but don't generate consumer demand directly.")
     c_atl, c_btl = st.columns(2)
 
     # By type (ATL vs BTL vs Digital vs Trade)
@@ -761,6 +995,9 @@ with tab4:
         unsafe_allow_html=True,
     )
 
+    caption("Each red bar is money that left the business before reaching net revenue. "
+            "Trade discounts go to distributors/retailers; marketing spend is our investment in demand creation; "
+            "listing fees are the access cost for retail ranging. The final green bar is what Niamito keeps.")
     wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
@@ -820,6 +1057,8 @@ with tab4:
 
     # ── Per-market comparison ─────────────────────────────
     st.markdown("<h2>Net Margin by Market</h2>", unsafe_allow_html=True)
+    caption("Side-by-side profitability after all deductions. Higher trade discounts or listing fees in one market "
+            "mean lower net margin even if gross revenue looks similar — this shows where the go-to-market is most expensive.")
     margin_rows = []
     for mkt in ["SI", "HR", "DE"]:
         if mkt not in (market_filter or ["SI","HR","DE"]):
@@ -858,6 +1097,8 @@ with tab5:
         revenue=("sellout_revenue", "sum"),
     ).reset_index().sort_values("revenue", ascending=False)
 
+    caption("Consumer revenue and volume by product. Revenue ranking tells you what drives top-line; "
+            "volume share tells you what drives throughput. A product with high volume but low revenue signals a pricing opportunity.")
     c_sku1, c_sku2 = st.columns(2)
 
     with c_sku1:
@@ -893,6 +1134,8 @@ with tab5:
 
     # ── SKU × Market heatmap ──────────────────────────────
     st.markdown("<h2>Revenue by SKU × Market</h2>", unsafe_allow_html=True)
+    caption("Which products perform in which markets. Dark cells = strong sell-out. Light cells = distribution gap or weak consumer uptake — "
+            "cross-reference with ranging data to distinguish the two.")
 
     pivot = so_f.groupby(["sku_name", "market"])["sellout_revenue"].sum().unstack(fill_value=0)
     pivot = pivot.round(0)
@@ -917,6 +1160,8 @@ with tab5:
 
     # ── SKU trend lines ───────────────────────────────────
     st.markdown("<h2>Sell-Out Trend by SKU</h2>", unsafe_allow_html=True)
+    caption("Week-by-week consumer sell-out across all markets. Flat or declining lines that persist across multiple markets "
+            "indicate a product issue — not just a local distribution or ranging problem.")
 
     sku_trend = so_f.groupby(["week", "sku_id"])["sellout_revenue"].sum().reset_index()
     fig_t = go.Figure()
