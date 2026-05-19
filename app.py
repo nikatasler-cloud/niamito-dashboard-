@@ -1,5 +1,5 @@
 """
-Niamito Marketing Intelligence Dashboard
+Niamito Business Intelligence Dashboard
 app.py  ·  Streamlit Community Cloud deployment
 GitHub repo: nikatasler-cloud/niamito-dashboard
 """
@@ -37,7 +37,7 @@ SKU_COLORS    = {
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Niamito · Marketing Intelligence",
+    page_title="Niamito · Business Intelligence",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -48,283 +48,355 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* ── global font ──────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────────── */
 html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, input {
-    font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    -webkit-font-smoothing: antialiased !important;
+    -moz-osx-font-smoothing: grayscale !important;
 }
+.stApp { background-color: #EEE6DC; }
+.block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1440px; }
 
-/* ── backgrounds ──────────────────────────────── */
-.stApp { background-color: #F0E8DF; }
-.block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1440px; }
-
-/* ── sidebar shell ────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   SIDEBAR — strip everything to bare minimum
+───────────────────────────────────────────────── */
 section[data-testid="stSidebar"] {
-    background: #0f0905 !important;
-    border-right: 1px solid rgba(255,255,255,0.05) !important;
+    background: #111008 !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
 }
-/* collapse button */
-section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
-    color: rgba(237,227,216,0.3) !important;
-}
-section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover {
-    color: rgba(237,227,216,0.7) !important;
-    background: transparent !important;
-}
-/* all text defaults */
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div,
-section[data-testid="stSidebar"] label { color: rgba(237,227,216,0.75) !important; }
 
-/* ── sidebar upload ────────────────────────────── */
-section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
-    font-size: 11px !important;
-    color: rgba(237,227,216,0.35) !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.3px !important;
+/* hide the ugly collapse icon text leak */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarHeader"] {
+    display: none !important;
 }
+
+/* text colour defaults */
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span:not([data-baseweb="tag"] span),
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] label { color: rgba(240,232,220,0.7) !important; }
+
+/* widget labels */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    letter-spacing: 1.1px !important;
+    text-transform: uppercase !important;
+    color: rgba(240,232,220,0.30) !important;
+    margin-bottom: 6px !important;
+}
+
+/* ── upload drop zone ─────────────────────── */
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    border-radius: 14px !important;
-    transition: all 0.2s !important;
-    padding: 14px !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1.5px dashed rgba(240,232,220,0.18) !important;
+    border-radius: 16px !important;
+    transition: all 0.2s ease !important;
+    padding: 20px 16px !important;
+    text-align: center !important;
+}
+/* stretch the span wrapper so the button fills full width */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > span {
+    width: 100% !important;
 }
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
-    border-color: rgba(237,227,216,0.25) !important;
-    background: rgba(255,255,255,0.07) !important;
+    border-color: rgba(240,232,220,0.40) !important;
+    background: rgba(255,255,255,0.08) !important;
 }
+/* the browse button */
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
-    background: rgba(237,227,216,0.92) !important;
-    color: #0f0905 !important;
+    background: #EDE3D8 !important;
+    color: #111008 !important;
     border: none !important;
-    border-radius: 999px !important;
-    font-weight: 700 !important;
-    font-size: 11.5px !important;
-    letter-spacing: 0.3px !important;
-    padding: 7px 20px !important;
-    transition: all 0.15s !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1px !important;
+    padding: 9px 0 !important;
     width: 100% !important;
+    transition: all 0.15s ease !important;
+    display: block !important;
 }
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
     background: #ffffff !important;
     transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
 }
+/* hide the icon wrapper inside the button (hides icon + removes its flex gap) */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {
+    display: none !important;
+}
+/* force button text dark — overrides the broad sidebar rgba text rule */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button p,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button div {
+    color: #111008 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+}
+/* hide file size / format hint */
+[data-testid="stFileUploaderDropzoneInstructions"],
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
     display: none !important;
 }
 
-/* ── sidebar multiselect ──────────────────────── */
-section[data-testid="stSidebar"] span[data-baseweb="tag"] {
-    background: rgba(237,227,216,0.10) !important;
-    border: 1px solid rgba(237,227,216,0.18) !important;
-    border-radius: 999px !important;
-    font-size: 11.5px !important;
+/* ── date range picker ───────────────────── */
+section[data-testid="stSidebar"] [data-testid="stDateInput"] label {
+    display: none !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(240,232,220,0.15) !important;
+    border-radius: 12px !important;
+    padding: 2px 4px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input {
+    color: rgba(240,232,220,0.85) !important;
+    font-size: 12px !important;
     font-weight: 500 !important;
-    padding: 2px 10px !important;
-    color: rgba(237,227,216,0.9) !important;
+    text-align: center !important;
+    background: transparent !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input::placeholder {
+    color: rgba(240,232,220,0.35) !important;
+}
+
+/* ── multiselect ──────────────────────────── */
+section[data-testid="stSidebar"] span[data-baseweb="tag"] {
+    background: rgba(240,232,220,0.12) !important;
+    border: 1px solid rgba(240,232,220,0.20) !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    padding: 3px 10px !important;
 }
 section[data-testid="stSidebar"] [data-baseweb="select"] > div {
     background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(237,227,216,0.12) !important;
+    border: 1px solid rgba(240,232,220,0.12) !important;
     border-radius: 12px !important;
-    transition: all 0.15s !important;
-}
-section[data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within {
-    border-color: rgba(237,227,216,0.30) !important;
-    background: rgba(255,255,255,0.08) !important;
 }
 
-/* ── sidebar radio → pill toggles ─────────────── */
+/* ── period radio → pill buttons ─────────── */
 section[data-testid="stSidebar"] [data-testid="stRadio"] > div {
-    gap: 4px !important;
+    gap: 3px !important;
     display: flex !important;
     flex-direction: column !important;
 }
 section[data-testid="stSidebar"] label[data-baseweb="radio"] {
     background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    border-radius: 12px !important;
-    padding: 9px 14px !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    padding: 10px 14px !important;
     margin: 0 !important;
     cursor: pointer !important;
-    transition: all 0.15s !important;
+    transition: all 0.14s ease !important;
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
-    gap: 10px !important;
 }
 section[data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
-    background: rgba(255,255,255,0.09) !important;
-    border-color: rgba(255,255,255,0.16) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.14) !important;
 }
 section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
-    background: rgba(237,221,210,0.12) !important;
-    border-color: rgba(237,221,210,0.30) !important;
+    background: rgba(237,227,216,0.13) !important;
+    border-color: rgba(237,227,216,0.28) !important;
 }
 section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) p {
-    color: #EDE3D8 !important;
+    color: rgba(240,232,220,0.95) !important;
     font-weight: 600 !important;
 }
-/* hide the native radio circle */
-section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
-    display: none !important;
-}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child { display: none !important; }
 section[data-testid="stSidebar"] label[data-baseweb="radio"] p {
     font-size: 13px !important;
     font-weight: 400 !important;
     margin: 0 !important;
-    color: rgba(237,227,216,0.65) !important;
+    color: rgba(240,232,220,0.55) !important;
 }
 
-/* ── metric cards ─────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   METRIC CARDS — Apple widget style
+───────────────────────────────────────────────── */
 div[data-testid="metric-container"] {
     background: #FFFFFF;
-    border: none;
-    border-radius: 20px;
-    padding: 22px 24px 20px;
-    box-shadow: 0 2px 8px rgba(44,26,14,0.05), 0 8px 24px rgba(44,26,14,0.09);
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    border-radius: 18px;
+    padding: 20px 22px 18px;
+    box-shadow:
+        0 0 0 0.5px rgba(0,0,0,0.06),
+        0 2px 6px rgba(44,26,14,0.04),
+        0 8px 20px rgba(44,26,14,0.07);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 div[data-testid="metric-container"]:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 4px 12px rgba(44,26,14,0.07), 0 16px 40px rgba(44,26,14,0.13);
+    transform: translateY(-2px);
+    box-shadow:
+        0 0 0 0.5px rgba(0,0,0,0.06),
+        0 4px 10px rgba(44,26,14,0.06),
+        0 16px 36px rgba(44,26,14,0.11);
 }
 div[data-testid="metric-container"] label {
-    color: #a08060 !important;
+    color: #9a7a5a !important;
     font-size: 11px !important;
     font-weight: 500 !important;
-    letter-spacing: 0.2px;
-    text-transform: none;
+    letter-spacing: 0.1px;
 }
 div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #1C1008 !important;
-    font-size: 30px !important;
+    color: #1a1008 !important;
+    font-size: 28px !important;
     font-weight: 700 !important;
-    letter-spacing: -1px;
-    line-height: 1.1;
+    letter-spacing: -0.8px;
+    line-height: 1.15;
 }
 div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 11.5px !important;
+    font-size: 11px !important;
     font-weight: 500 !important;
-    margin-top: 6px !important;
-    opacity: 0.85;
+    margin-top: 5px !important;
 }
 
-/* ── tabs — pill style ────────────────────────── */
+/* ─────────────────────────────────────────────────
+   TABS — iOS segmented control style
+───────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 3px;
-    background: rgba(44,26,14,0.08);
-    border-radius: 999px;
-    padding: 4px 5px;
+    gap: 2px;
+    background: rgba(44,26,14,0.07);
+    border-radius: 12px;
+    padding: 3px 4px;
     border-bottom: none !important;
     display: inline-flex;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #7a5c3c;
-    border-radius: 999px;
+    color: rgba(44,26,14,0.50);
+    border-radius: 9px;
     font-size: 12.5px;
     font-weight: 500;
-    padding: 7px 18px;
+    padding: 7px 16px;
     background: transparent;
     border: none;
-    transition: all 0.15s;
+    transition: all 0.14s ease;
     white-space: nowrap;
 }
-.stTabs [data-baseweb="tab"]:hover {
-    color: #2C1A0E;
-    background: rgba(255,255,255,0.5);
-}
+.stTabs [data-baseweb="tab"]:hover { color: rgba(44,26,14,0.75); }
 .stTabs [aria-selected="true"] {
-    color: #F0E8DF !important;
-    font-weight: 700 !important;
-    background: #2C1A0E !important;
-    box-shadow: 0 1px 4px rgba(44,26,14,0.3) !important;
+    color: #1a1008 !important;
+    font-weight: 600 !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
 }
-.stTabs [data-baseweb="tab-highlight"] { display: none !important; }
-.stTabs [data-baseweb="tab-border"]    { display: none !important; }
+.stTabs [data-baseweb="tab-highlight"],
+.stTabs [data-baseweb="tab-border"] { display: none !important; }
 
-/* ── section headings ─────────────────────────── */
+/* ─────────────────────────────────────────────────
+   TYPOGRAPHY
+───────────────────────────────────────────────── */
 h1 {
-    color: #1C1008 !important;
-    font-family: Georgia, serif !important;
+    color: #1a1008 !important;
     font-size: 22px !important;
     font-weight: 700 !important;
-    letter-spacing: -0.4px;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
 }
 h2 {
-    color: #1C1008 !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
+    color: rgba(26,16,8,0.45) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-top: 1.4rem !important;
-    margin-bottom: 0.5rem !important;
-    opacity: 0.75;
+    letter-spacing: 0.9px;
+    margin-top: 1.6rem !important;
+    margin-bottom: 0.4rem !important;
 }
-h3 { color: #1C1008 !important; font-size: 13px !important; font-weight: 600 !important; }
+h3 { color: #1a1008 !important; font-size: 13px !important; font-weight: 600 !important; }
 
-/* ── divider ──────────────────────────────────── */
-hr { border: none !important; border-top: 1px solid rgba(44,26,14,0.12) !important; margin: 12px 0 !important; }
+/* ─────────────────────────────────────────────────
+   MISC
+───────────────────────────────────────────────── */
+hr { border: none !important; border-top: 0.5px solid rgba(44,26,14,0.10) !important; margin: 14px 0 !important; }
 
-/* ── dataframe ────────────────────────────────── */
 .stDataFrame {
     border-radius: 14px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(44,26,14,0.06), 0 4px 14px rgba(44,26,14,0.07);
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.06), 0 4px 16px rgba(44,26,14,0.07);
 }
 
-/* ── chart captions ───────────────────────────── */
 .chart-caption {
-    font-size: 12px;
+    font-size: 12.5px;
     color: #9a7a58;
-    line-height: 1.6;
-    margin: -6px 0 10px;
+    line-height: 1.55;
+    margin: -4px 0 12px;
     font-weight: 400;
-    max-width: 680px;
+    max-width: 720px;
 }
 
-/* ── info/note boxes ──────────────────────────── */
 .info-note {
-    background: rgba(255,255,255,0.7);
-    border-left: 3px solid #B3B8D9;
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(10px);
+    border: 0.5px solid rgba(44,26,14,0.10);
+    border-left: 2.5px solid #B3B8D9;
     border-radius: 0 12px 12px 0;
-    padding: 12px 18px;
+    padding: 12px 16px;
     font-size: 12.5px;
     color: #4a3020;
     margin-bottom: 16px;
     line-height: 1.65;
-    box-shadow: 0 1px 6px rgba(44,26,14,0.05);
 }
 
-/* ── status bar / header strip ────────────────── */
-.status-bar {
-    background: rgba(255,255,255,0.55);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(44,26,14,0.10);
-    border-radius: 12px;
-    padding: 8px 16px;
-    font-size: 12px;
-    color: #6b4c30;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-/* ── demo badge ───────────────────────────────── */
 .demo-badge {
     background: #EDD96A;
-    color: #1C1008;
-    border-radius: 999px;
-    padding: 3px 10px;
-    font-size: 10.5px;
+    color: #1a1008;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
     display: inline-block;
+}
+
+/* ─────────────────────────────────────────────────
+   MAIN CONTENT RADIO → segmented pill control
+───────────────────────────────────────────────── */
+.stMain [data-testid="stRadio"] > div[role="radiogroup"] {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    gap: 2px !important;
+    background: rgba(44,26,14,0.07) !important;
+    border-radius: 10px !important;
+    padding: 3px !important;
+}
+.stMain label[data-baseweb="radio"] {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 7px 18px !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    transition: all 0.14s ease !important;
+    display: flex !important;
+    align-items: center !important;
+}
+.stMain label[data-baseweb="radio"]:hover {
+    background: rgba(255,255,255,0.5) !important;
+}
+.stMain label[data-baseweb="radio"]:has(input:checked) {
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
+}
+.stMain label[data-baseweb="radio"]:has(input:checked) p {
+    color: #1a1008 !important;
+    font-weight: 600 !important;
+}
+/* hide native radio circle in main content too */
+.stMain label[data-baseweb="radio"] > div:first-child { display: none !important; }
+.stMain label[data-baseweb="radio"] p {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    margin: 0 !important;
+    color: rgba(44,26,14,0.50) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -543,7 +615,7 @@ with st.sidebar:
             <div style='font-family:Georgia,serif; font-size:22px; font-weight:700;
                         color:#EDE3D8; letter-spacing:-0.4px; line-height:1;'>Niamito</div>
             <div style='font-size:9px; color:rgba(237,227,216,0.28); letter-spacing:3px;
-                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Marketing Intelligence</div>
+                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Business Intelligence</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -565,9 +637,19 @@ with st.sidebar:
 
     period = st.radio(
         "Period",
-        options=["All data", "Last 4 weeks", "Last 8 weeks", "Last 13 weeks"],
+        options=["All data", "Last month", "Last quarter", "Custom range"],
         index=0,
     )
+
+    custom_range = None
+    if period == "Custom range":
+        custom_range = st.date_input(
+            "Date range",
+            value=(pd.Timestamp("2026-04-01").date(), pd.Timestamp("2026-05-19").date()),
+            min_value=pd.Timestamp("2026-01-01").date(),
+            max_value=pd.Timestamp("2026-12-31").date(),
+            format="DD/MM/YYYY",
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -597,12 +679,18 @@ else:
     prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
 
 # ── Apply period filter ───────────────────────────────
+today = pd.Timestamp("2026-05-19")
 cutoff_map = {
-    "Last 4 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=4),
-    "Last 8 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=8),
-    "Last 13 weeks": pd.Timestamp("2026-05-11") - timedelta(weeks=13),
+    "Last month":   (today.replace(day=1) - pd.DateOffset(months=1)),
+    "Last quarter": (today - pd.DateOffset(months=3)),
 }
-if period != "All data":
+if period == "Custom range":
+    if custom_range and len(custom_range) == 2:
+        start_ts, end_ts = pd.Timestamp(custom_range[0]), pd.Timestamp(custom_range[1])
+        prim_f  = prim_f[(prim_f["week"] >= start_ts) & (prim_f["week"] <= end_ts)]
+        so_f    = so_f[(so_f["week"] >= start_ts) & (so_f["week"] <= end_ts)]
+        stock_f = stock_f[(stock_f["week"] >= start_ts) & (stock_f["week"] <= end_ts)]
+elif period != "All data":
     cutoff  = cutoff_map[period]
     prim_f  = prim_f[prim_f["week"] >= cutoff]
     so_f    = so_f[so_f["week"] >= cutoff]
@@ -616,7 +704,7 @@ badge = '<span class="demo-badge">Demo data</span>' if demo_mode else '<span cla
 mkts  = ', '.join(market_filter) if market_filter else 'none'
 st.markdown(
     f"<div style='display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap;'>"
-    f"  <h1 style='margin:0; font-family:Georgia,serif; font-size:22px; font-weight:700; color:#1C1008; letter-spacing:-0.4px;'>Niamito <span style='color:#8a6a4a; font-weight:400;'>·</span> Marketing Intelligence</h1>"
+    f"  <h1 style='margin:0; font-family:Georgia,serif; font-size:22px; font-weight:700; color:#1C1008; letter-spacing:-0.4px;'>Niamito <span style='color:#8a6a4a; font-weight:400;'>·</span> Business Intelligence</h1>"
     f"  {badge}"
     f"  <span style='font-size:11.5px; color:#8a6a4a; font-weight:500;'>Markets: <b style='color:#1C1008;'>{mkts}</b></span>"
     f"  <span style='font-size:11.5px; color:#8a6a4a; font-weight:500;'>Period: <b style='color:#1C1008;'>{period}</b></span>"
@@ -1211,7 +1299,7 @@ with tab5:
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(
     f"<p style='text-align:center; color:{MID}; font-size:10px;'>"
-    "Niamito Marketing Intelligence · "
+    "Niamito Business Intelligence · "
     "Data: Niamito_Master_Tables.xlsx · "
     "Built with Streamlit · "
     "{'Demo mode — upload real data via sidebar' if demo_mode else 'Live data'}"
