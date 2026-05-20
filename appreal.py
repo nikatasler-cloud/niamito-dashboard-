@@ -121,7 +121,7 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
 }
 /* the browse button */
 section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
-    background: #EDE3D8 !important;
+    background: #FFFFFF !important;
     color: #111008 !important;
     border: none !important;
     border-radius: 10px !important;
@@ -529,6 +529,15 @@ def load_excel(file):
     Load Niamito_Master_Tables.xlsx and map all sheets to the app's
     internal dataframe schema. Returns (prim_df, so_df, mkt_df, stock_df, PRODUCTS).
     """
+    def to_float(val):
+        """Safely convert a cell value to float, treating '-', '', None as 0."""
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return 0.0
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+
     xl  = pd.ExcelFile(file, engine="openpyxl")
     raw = {}
     for s in xl.sheet_names:
@@ -566,7 +575,7 @@ def load_excel(file):
             sku = str(r[sku_col]).strip()
             PRODUCTS[sku] = {
                 "name":  str(r[name_col]).strip() if name_col else sku,
-                "price": float(r[margin_col]) if margin_col and pd.notna(r[margin_col]) else 0.0,
+                "price": to_float(r.get(margin_col)),
                 "bpc":   1,
             }
     if not PRODUCTS:
@@ -610,8 +619,8 @@ def load_excel(file):
                 week = pd.NaT
             sid  = str(r.get(store_col, "")).strip()
             info = store_map.get(sid, {"market": "SI", "tier": 3})
-            units = float(r[units_col]) if pd.notna(r.get(units_col)) else 0
-            rev   = float(r[rev_col]) if rev_col and pd.notna(r.get(rev_col)) else 0
+            units = to_float(r.get(units_col))
+            rev   = to_float(r.get(rev_col))
             so_rows.append({
                 "week":           week,
                 "market":         info["market"],
@@ -643,10 +652,10 @@ def load_excel(file):
         for _, r in mkt_raw.iterrows():
             if pd.isna(r.get(cid_col)):
                 continue
-            media  = float(r[media_col]) if media_col and pd.notna(r.get(media_col)) else 0
-            listing = float(r[list_col]) if list_col and pd.notna(r.get(list_col)) else 0
-            disc   = float(r[disc_col]) if disc_col and pd.notna(r.get(disc_col)) else 0
-            total  = float(r[total_col]) if total_col and pd.notna(r.get(total_col)) else media + listing + disc
+            media   = to_float(r.get(media_col))
+            listing = to_float(r.get(list_col))
+            disc    = to_float(r.get(disc_col))
+            total   = to_float(r.get(total_col)) or (media + listing + disc)
             mkt_rows.append({
                 "id":               str(r.get(cid_col, "")).strip(),
                 "name":             str(r.get(name_col, "")).strip(),
@@ -661,7 +670,7 @@ def load_excel(file):
                 "roas":             None,
                 "attributed_sales": 0.0,
                 "influencer":       str(r[inf_col]).strip() if inf_col and pd.notna(r.get(inf_col)) else None,
-                "reach":            float(r[reach_col]) if reach_col and pd.notna(r.get(reach_col)) else None,
+                "reach":            to_float(r.get(reach_col)) or None,
             })
     mkt_df = pd.DataFrame(mkt_rows) if mkt_rows else pd.DataFrame(
         columns=["id","name","channel","market","start","end","media_spend",
@@ -728,16 +737,28 @@ with st.sidebar:
 # LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 demo_mode = True
-prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
+PRODUCTS = {
+    "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
+    "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
+    "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
+    "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+}
+prim_df  = pd.DataFrame(columns=["week","market","sku_id","sku_name","cases","bottles",
+                                  "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
+so_df    = pd.DataFrame(columns=["week","market","sku_id","sku_name","bottles_sold",
+                                  "consumer_price","sellout_revenue","funnel_type"])
+mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","media_spend",
+                                  "listing_fee","trade_disc","total_spend","roas","attributed_sales",
+                                  "influencer","reach"])
+stock_df = pd.DataFrame(columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 
 if uploaded is not None:
     try:
         prim_df, so_df, mkt_df, stock_df, PRODUCTS = load_excel(uploaded)
         demo_mode = False
-        st.sidebar.success("✓ Data loaded from file")
+        st.sidebar.success("✓ Data loaded")
     except Exception as e:
         st.sidebar.error(f"Could not read file: {e}")
-        # keep demo data on error
 
 # ── Apply market filter ───────────────────────────────
 if market_filter:
