@@ -1,5 +1,5 @@
 """
-Niamito Marketing Intelligence Dashboard
+Niamito Business Intelligence Dashboard
 app.py  ·  Streamlit Community Cloud deployment
 GitHub repo: nikatasler-cloud/niamito-dashboard
 """
@@ -25,6 +25,12 @@ YELLOW = "#EDD96A"
 CREAM  = "#F9F4EF"
 MID    = "#6b4c30"
 
+def hex_alpha(hex_color, alpha):
+    """Convert a 6-digit hex color + float alpha to an rgba() string."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
 MARKET_COLORS = {"SI": BROWN, "HR": LAVEN, "DE": GREEN}
 SKU_COLORS    = {
     "NIA-OG-250": BROWN,
@@ -37,7 +43,7 @@ SKU_COLORS    = {
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Niamito · Marketing Intelligence",
+    page_title="Niamito · Business Intelligence",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -48,81 +54,320 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── backgrounds ──────────────────────────────── */
-.stApp { background-color: #EDE3D8; }
-section[data-testid="stSidebar"] { background-color: #2C1A0E !important; }
-section[data-testid="stSidebar"] * { color: #EDE3D8 !important; }
-section[data-testid="stSidebar"] .stFileUploader label { color: #EDE3D8 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* ── layout ───────────────────────────────────── */
-.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
+/* ─────────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────────── */
+html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, input {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    -webkit-font-smoothing: antialiased !important;
+    -moz-osx-font-smoothing: grayscale !important;
+}
 
-/* ── metric cards ─────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   APP BACKGROUND
+───────────────────────────────────────────────── */
+.stApp { background-color: #EEE6DC; }
+
+/* ─────────────────────────────────────────────────
+   SIDEBAR
+───────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: #1C1008 !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] label {
+    color: rgba(240,232,220,0.70) !important;
+}
+section[data-testid="stSidebar"] .stMarkdown small {
+    color: rgba(240,232,220,0.40) !important;
+    font-size: 10px !important;
+}
+
+/* hide sidebar collapse button */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarHeader"] { display: none !important; }
+
+/* ── section labels ─────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    font-size: 9px !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    color: rgba(240,232,220,0.35) !important;
+    font-weight: 600 !important;
+    margin-bottom: 6px !important;
+}
+
+/* ── upload drop zone ─────────────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1.5px dashed rgba(240,232,220,0.18) !important;
+    border-radius: 16px !important;
+    transition: all 0.2s ease !important;
+    padding: 20px 16px !important;
+    text-align: center !important;
+}
+/* stretch the span wrapper so the button fills full width */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > span {
+    width: 100% !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
+    border-color: rgba(240,232,220,0.40) !important;
+    background: rgba(255,255,255,0.08) !important;
+}
+/* the browse button */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+    background: #FFFFFF !important;
+    color: #111008 !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1px !important;
+    padding: 9px 0 !important;
+    width: 100% !important;
+    transition: all 0.15s ease !important;
+    display: block !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
+    background: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+/* hide the icon wrapper inside the button (hides icon + removes its flex gap) */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {
+    display: none !important;
+}
+/* force button text dark — overrides the broad sidebar rgba text rule */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button p,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button div {
+    color: #111008 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+}
+/* hide file size / format hint */
+[data-testid="stFileUploaderDropzoneInstructions"],
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
+    display: none !important;
+}
+
+/* ── uploaded file card — force dark text on light background ── */
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"],
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFileData"],
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] {
+    background: #FFFFFF !important;
+    border-radius: 10px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] p,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] span,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] small,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] div,
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] * {
+    color: #1C1008 !important;
+    opacity: 1 !important;
+}
+/* progress bar under uploaded file */
+section[data-testid="stSidebar"] [data-testid="stFileUploader"] [role="progressbar"] {
+    display: none !important;
+}
+
+/* ── date range picker ───────────────────── */
+section[data-testid="stSidebar"] [data-testid="stDateInput"] label {
+    display: none !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(240,232,220,0.15) !important;
+    border-radius: 12px !important;
+    padding: 2px 4px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input {
+    color: rgba(240,232,220,0.85) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    text-align: center !important;
+    background: transparent !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input::placeholder {
+    color: rgba(240,232,220,0.35) !important;
+}
+
+/* ── multiselect ──────────────────────────── */
+section[data-testid="stSidebar"] span[data-baseweb="tag"] {
+    background: rgba(240,232,220,0.12) !important;
+    border: 1px solid rgba(240,232,220,0.20) !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    padding: 3px 10px !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(240,232,220,0.12) !important;
+    border-radius: 12px !important;
+}
+
+/* ── period radio → pill buttons ─────────── */
+section[data-testid="stSidebar"] [data-testid="stRadio"] > div {
+    gap: 3px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    padding: 8px 14px !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
+    width: 100% !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
+    background: rgba(237,221,210,0.13) !important;
+    border-color: rgba(240,232,220,0.22) !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+
+/* ─────────────────────────────────────────────────
+   MAIN CONTENT
+───────────────────────────────────────────────── */
+.block-container {
+    padding-top: 1.8rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 1400px !important;
+}
+
+/* ── metric cards ─────────────────────────── */
 div[data-testid="metric-container"] {
     background: #F9F4EF;
-    border: 1.5px solid #d4c5b0;
-    border-radius: 14px;
-    padding: 14px 18px;
+    border: 1px solid rgba(44,26,14,0.10);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.06), 0 2px 6px rgba(44,26,14,0.04), 0 8px 20px rgba(44,26,14,0.07);
 }
 div[data-testid="metric-container"] label {
     color: #6b4c30 !important;
     font-size: 11px !important;
     text-transform: uppercase;
     letter-spacing: 0.6px;
+    font-weight: 600 !important;
 }
 div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #2C1A0E !important;
+    color: #1C1008 !important;
     font-size: 28px !important;
     font-weight: 700 !important;
+    letter-spacing: -0.5px !important;
 }
 div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
     font-size: 12px !important;
 }
 
-/* ── tabs ─────────────────────────────────────── */
+/* ── tabs ─────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px;
-    border-bottom: 2px solid #c8b89a;
-    background: transparent;
+    gap: 4px;
+    background: rgba(44,26,14,0.07) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+    border-bottom: none !important;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #6b4c30;
-    border-radius: 8px 8px 0 0;
+    color: rgba(44,26,14,0.55);
+    border-radius: 8px !important;
     font-size: 13px;
-    padding: 8px 20px;
-    background: transparent;
-    border: none;
+    font-weight: 500;
+    padding: 7px 16px;
+    background: transparent !important;
+    border: none !important;
+    transition: all 0.15s ease !important;
 }
 .stTabs [aria-selected="true"] {
-    color: #2C1A0E !important;
-    font-weight: 700 !important;
-    background: #F9F4EF !important;
+    color: #1C1008 !important;
+    font-weight: 600 !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
 }
 
-/* ── typography ───────────────────────────────── */
-h1 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 20px !important; }
-h2 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 15px !important; margin-top: 1rem !important; }
-h3 { color: #2C1A0E !important; font-size: 13px !important; font-weight: 600 !important; }
+/* ── iOS segmented control — main content radios ─ */
+.stMain [data-testid="stRadio"] > div[role="radiogroup"] {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    background: rgba(44,26,14,0.07) !important;
+    border-radius: 10px !important;
+    padding: 3px !important;
+    gap: 2px !important;
+}
+.stMain label[data-baseweb="radio"] {
+    border-radius: 8px !important;
+    padding: 5px 14px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: rgba(44,26,14,0.55) !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
+    border: none !important;
+    background: transparent !important;
+}
+.stMain label[data-baseweb="radio"]:has(input:checked) {
+    background: #FFFFFF !important;
+    color: #1C1008 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
+}
+.stMain label[data-baseweb="radio"] > div:first-child { display: none !important; }
 
-/* ── info banner ──────────────────────────────── */
-.demo-banner {
+/* ── chart captions ───────────────────────── */
+p.chart-caption {
+    font-size: 12.5px;
+    color: #8a6a4a;
+    line-height: 1.55;
+    margin-top: 6px;
+    margin-bottom: 18px;
+    max-width: 520px;
+}
+
+/* ── demo badge ───────────────────────────── */
+.demo-badge {
     background: #EDD96A;
     color: #2C1A0E;
-    border-radius: 10px;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 14px;
-    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 999px;
+    vertical-align: middle;
 }
 
-/* ── divider ──────────────────────────────────── */
-hr { border-color: #c8b89a !important; margin: 8px 0 !important; }
-
-/* ── dataframe ────────────────────────────────── */
-.stDataFrame { border-radius: 10px; overflow: hidden; }
+/* ── page header ──────────────────────────── */
+.page-header {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1C1008;
+    letter-spacing: -0.4px;
+    margin-bottom: 2px;
+}
+.context-line {
+    font-size: 12px;
+    color: #8a6a4a;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CAPTION HELPER
+# ──────────────────────────────────────────────────────────────────────────────
+def caption(text):
+    st.markdown(f"<p class='chart-caption'>{text}</p>", unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -159,7 +404,7 @@ def generate_demo_data():
         "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
         "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
         "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
-        "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+        "NIA-MP-500": {"name": "Multipack 6x250ml", "price": 17.50, "bpc": 6},
     }
 
     weeks = pd.date_range("2026-01-05", "2026-05-11", freq="W-MON")
@@ -243,7 +488,7 @@ def generate_demo_data():
         # scope: "Market" = influencers/events/ATL → market-wide lift by time window
         #        "Store"  = sampling/catalog/display → tag specific store rows
         {"id": "MKT-2026-001", "name": "Q1 Instore Sampling SI",
-         "channel": "BTL – Sampling",         "market": "SI",  "start": "2026-01-15", "end": "2026-02-15",
+         "channel": "BTL - Sampling",         "market": "SI",  "start": "2026-01-15", "end": "2026-02-15",
          "media_spend": 2800,  "listing_fee": 0,    "trade_disc": 0,   "roas": 3.4,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 7},
         {"id": "MKT-2026-002", "name": "Valentine Digital DE",
@@ -251,39 +496,39 @@ def generate_demo_data():
          "media_spend": 1500,  "listing_fee": 0,    "trade_disc": 200, "roas": 2.1,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-003", "name": "Spring OOH Billboard",
-         "channel": "ATL – Out-of-Home",       "market": "ALL", "start": "2026-03-01", "end": "2026-04-30",
+         "channel": "ATL - Out-of-Home",       "market": "ALL", "start": "2026-03-01", "end": "2026-04-30",
          "media_spend": 12000, "listing_fee": 0,    "trade_disc": 0,   "roas": 0.9,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-004", "name": "Mercator Listing Fee",
-         "channel": "Trade – Listing Fee",     "market": "SI",  "start": "2026-01-01", "end": "2026-01-01",
+         "channel": "Trade - Listing Fee",     "market": "SI",  "start": "2026-01-01", "end": "2026-01-01",
          "media_spend": 0,     "listing_fee": 3500, "trade_disc": 0,   "roas": None,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
         {"id": "MKT-2026-005", "name": "Konzum Shelf Push HR",
-         "channel": "BTL – Trade Promo",       "market": "HR",  "start": "2026-02-15", "end": "2026-03-15",
+         "channel": "BTL - Trade Promo",       "market": "HR",  "start": "2026-02-15", "end": "2026-03-15",
          "media_spend": 1200,  "listing_fee": 1800, "trade_disc": 500, "roas": 2.0,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
         {"id": "MKT-2026-006", "name": "@healthy.si.life Collab",
-         "channel": "BTL-Digital – Influencer","market": "SI",  "start": "2026-03-10", "end": "2026-03-24",
+         "channel": "BTL-Digital - Influencer","market": "SI",  "start": "2026-03-10", "end": "2026-03-24",
          "media_spend": 600,   "listing_fee": 0,    "trade_disc": 0,   "roas": 3.1,
          "influencer": "@healthy.si.life", "reach": 28000,  "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-007", "name": "@fitnesswelt_de Collab",
-         "channel": "BTL-Digital – Influencer","market": "DE",  "start": "2026-04-01", "end": "2026-04-21",
+         "channel": "BTL-Digital - Influencer","market": "DE",  "start": "2026-04-01", "end": "2026-04-21",
          "media_spend": 1800,  "listing_fee": 0,    "trade_disc": 0,   "roas": 2.7,
          "influencer": "@fitnesswelt_de", "reach": 112000, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-008", "name": "@jedihrvati Collab",
-         "channel": "BTL-Digital – Influencer","market": "HR",  "start": "2026-04-10", "end": "2026-04-24",
+         "channel": "BTL-Digital - Influencer","market": "HR",  "start": "2026-04-10", "end": "2026-04-24",
          "media_spend": 900,   "listing_fee": 0,    "trade_disc": 0,   "roas": 2.3,
          "influencer": "@jedihrvati", "reach": 45000,  "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-009", "name": "Q2 Summer Sampling SI",
-         "channel": "BTL – Sampling",         "market": "SI",  "start": "2026-05-01", "end": "2026-06-30",
+         "channel": "BTL - Sampling",         "market": "SI",  "start": "2026-05-01", "end": "2026-06-30",
          "media_spend": 3200,  "listing_fee": 0,    "trade_disc": 0,   "roas": 3.8,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 7},
         {"id": "MKT-2026-010", "name": "DE Summer Digital",
          "channel": "BTL-Digital",             "market": "DE",  "start": "2026-05-15", "end": "2026-06-30",
          "media_spend": 2400,  "listing_fee": 0,    "trade_disc": 300, "roas": 2.4,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2026-011", "name": "DM Tek – Social Coverage",
-         "channel": "BTL-Digital – Event",     "market": "SI",  "start": "2026-05-30", "end": "2026-05-30",
+        {"id": "MKT-2026-011", "name": "DM Tek - Social Coverage",
+         "channel": "BTL-Digital - Event",     "market": "SI",  "start": "2026-05-30", "end": "2026-05-30",
          "media_spend": 0,     "listing_fee": 0,    "trade_disc": 0,   "roas": None,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
     ]
@@ -297,83 +542,175 @@ def generate_demo_data():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXCEL LOADER — maps real Master Tables columns → dashboard field names
+# EXCEL LOADER (for real uploads)
 # ──────────────────────────────────────────────────────────────────────────────
 def load_excel(file):
-    xl     = pd.ExcelFile(file, engine="openpyxl")
-    sheets = xl.sheet_names
+    """
+    Load Niamito_Master_Tables.xlsx and map all sheets to the app's
+    internal dataframe schema. Returns (prim_df, so_df, mkt_df, stock_df, PRODUCTS).
+    """
+    def to_float(val):
+        """Safely convert a cell value to float, treating '-', '', None as 0."""
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return 0.0
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
 
-    def find_sheet(keywords):
-        for s in sheets:
-            if any(k.lower() in s.lower() for k in keywords):
-                return s
+    xl  = pd.ExcelFile(file, engine="openpyxl")
+    raw = {}
+    for s in xl.sheet_names:
+        try:
+            df = pd.read_excel(xl, sheet_name=s, header=2, engine="openpyxl")
+            # flatten newline-containing column names
+            df.columns = [str(c).replace("\n", " ").strip() for c in df.columns]
+            df = df.dropna(how="all")
+            raw[s] = df
+        except Exception:
+            pass
+
+    def find(keywords):
+        for name, df in raw.items():
+            if any(k.lower() in name.lower() for k in keywords):
+                return df
         return None
 
-    results = {}
+    prod_raw  = find(["Product"])
+    store_raw = find(["Store"])
+    mkt_raw   = find(["Marketing", "Calendar"])
+    so_raw    = find(["Sell-out", "Sell out", "Sellout"])
 
-    # ── Marketing Calendar ────────────────────────────────
-    mkt_sheet = find_sheet(["Marketing", "Calendar"])
-    if mkt_sheet:
-        raw = pd.read_excel(file, sheet_name=mkt_sheet, header=2, engine="openpyxl")
-        raw = raw.dropna(subset=[raw.columns[0]])          # drop empty rows
+    # ── PRODUCTS dict ──────────────────────────────────────────────────────────
+    PRODUCTS = {}
+    if prod_raw is not None:
+        sku_col  = next((c for c in prod_raw.columns if "Internal SKU" in c), None)
+        name_col = next((c for c in prod_raw.columns if "Product Name" in c), None)
+        size_col = next((c for c in prod_raw.columns if "Size" in c), None)
+        mkt_col  = next((c for c in prod_raw.columns if "Market" in c), None)
+        margin_col = next((c for c in prod_raw.columns if "Margin" in c), None)
+        for _, r in prod_raw.iterrows():
+            if pd.isna(r.get(sku_col, None)):
+                continue
+            sku = str(r[sku_col]).strip()
+            PRODUCTS[sku] = {
+                "name":  str(r[name_col]).strip() if name_col else sku,
+                "price": to_float(r.get(margin_col)),
+                "bpc":   1,
+            }
+    if not PRODUCTS:
+        PRODUCTS = {
+            "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
+            "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
+            "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
+            "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+        }
 
-        mkt = pd.DataFrame()
-        mkt["id"]            = raw.iloc[:, 0].astype(str).str.strip()
-        mkt["name"]          = raw.iloc[:, 1].astype(str).str.strip()
-        mkt["channel"]       = raw.iloc[:, 2].astype(str).str.strip()
-        mkt["start"]         = pd.to_datetime(raw.iloc[:, 3], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
-        mkt["end"]           = pd.to_datetime(raw.iloc[:, 4], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
-        mkt["sku"]           = raw.iloc[:, 5].astype(str).str.strip()
-        mkt["market"]        = raw.iloc[:, 6].astype(str).str.strip()
-        mkt["tier"]          = pd.to_numeric(raw.iloc[:, 7], errors="coerce")
-        mkt["retailer"]      = raw.iloc[:, 8].astype(str).str.strip()
-        mkt["media_spend"]   = pd.to_numeric(raw.iloc[:, 9],  errors="coerce").fillna(0)
-        mkt["listing_fee"]   = pd.to_numeric(raw.iloc[:, 10], errors="coerce").fillna(0)
-        mkt["trade_disc"]    = pd.to_numeric(raw.iloc[:, 11], errors="coerce").fillna(0)
-        mkt["sampling_cost"] = pd.to_numeric(raw.iloc[:, 12], errors="coerce").fillna(0)
-        mkt["total_spend"]   = pd.to_numeric(raw.iloc[:, 13], errors="coerce").fillna(0)
-        mkt["status"]        = raw.iloc[:, 14].astype(str).str.strip()
-        mkt["notes"]         = raw.iloc[:, 15].astype(str).str.strip()
-        # Influencer columns (Q=16, R=17)
-        mkt["influencer"]    = raw.iloc[:, 16].astype(str).str.strip().replace({"nan": None, "": None}) if raw.shape[1] > 16 else None
-        mkt["reach"]         = pd.to_numeric(raw.iloc[:, 17], errors="coerce")              if raw.shape[1] > 17 else None
-        # Attribution columns (S=18, T=19)
-        mkt["scope"]         = raw.iloc[:, 18].astype(str).str.strip().replace({"nan": "Store", "": "Store"}) if raw.shape[1] > 18 else "Store"
-        mkt["window_days"]   = pd.to_numeric(raw.iloc[:, 19], errors="coerce").fillna(14)   if raw.shape[1] > 19 else 14
-        # ROAS placeholder — will be computed from sell-out once data is linked
-        mkt["roas"]          = None
-        mkt["attributed_sales"] = 0.0
-        # Filter out non-campaign rows (legend rows etc.)
-        mkt = mkt[mkt["id"].str.startswith("MKT-", na=False)]
-        results["marketing"] = mkt
+    # ── Store lookup: Store ID → (market, tier) ────────────────────────────────
+    store_map = {}   # store_id → {"market": str, "tier": int}
+    if store_raw is not None:
+        sid_col = next((c for c in store_raw.columns if "Store ID" in c or "Retailer Store" in c), None)
+        mkt_col = next((c for c in store_raw.columns if "Market" in c), None)
+        tier_col = next((c for c in store_raw.columns if "Tier" in c), None)
+        if sid_col:
+            for _, r in store_raw.iterrows():
+                sid = str(r[sid_col]).strip()
+                mkt  = str(r[mkt_col]).strip() if mkt_col and pd.notna(r.get(mkt_col)) else "SI"
+                tier = int(r[tier_col]) if tier_col and pd.notna(r.get(tier_col)) else 3
+                store_map[sid] = {"market": mkt, "tier": tier}
 
-    # ── Sell-out Template ─────────────────────────────────
-    so_sheet = find_sheet(["Sell", "Sellout"])
-    if so_sheet:
-        raw = pd.read_excel(file, sheet_name=so_sheet, header=2, engine="openpyxl")
-        raw = raw.dropna(subset=[raw.columns[4]])   # drop rows with no Units Sold
+    # ── Sell-out → so_df ───────────────────────────────────────────────────────
+    so_rows = []
+    if so_raw is not None:
+        date_col  = next((c for c in so_raw.columns if "Date" in c), None)
+        store_col = next((c for c in so_raw.columns if "Store ID" in c), None)
+        name_col  = next((c for c in so_raw.columns if "Product Name" in c), None)
+        units_col = next((c for c in so_raw.columns if "Units" in c), None)
+        rev_col   = next((c for c in so_raw.columns if "Revenue" in c), None)
+        for _, r in so_raw.iterrows():
+            if pd.isna(r.get(units_col)):
+                continue
+            raw_date = r.get(date_col)
+            try:
+                dt = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
+                # snap to Monday of that week
+                week = dt - pd.Timedelta(days=dt.weekday())
+            except Exception:
+                week = pd.NaT
+            sid  = str(r.get(store_col, "")).strip()
+            info = store_map.get(sid, {"market": "SI", "tier": 3})
+            units = to_float(r.get(units_col))
+            rev   = to_float(r.get(rev_col))
+            so_rows.append({
+                "week":           week,
+                "market":         info["market"],
+                "sku_id":         sid,
+                "sku_name":       str(r.get(name_col, "")).strip(),
+                "bottles_sold":   int(units),
+                "consumer_price": round(rev / units, 2) if units > 0 else 0,
+                "sellout_revenue": round(rev, 2),
+                "funnel_type":    f"{info['tier']}-tier",
+            })
+    so_df = pd.DataFrame(so_rows) if so_rows else pd.DataFrame(
+        columns=["week","market","sku_id","sku_name","bottles_sold","consumer_price","sellout_revenue","funnel_type"])
 
-        so = pd.DataFrame()
-        so["week"]            = pd.to_datetime(raw.iloc[:, 0], dayfirst=True, errors="coerce")
-        so["store_id"]        = raw.iloc[:, 1].astype(str).str.strip()
-        so["sku_name"]        = raw.iloc[:, 2].astype(str).str.strip()
-        so["retailer_sku"]    = raw.iloc[:, 3].astype(str).str.strip()
-        so["bottles_sold"]    = pd.to_numeric(raw.iloc[:, 4], errors="coerce").fillna(0)
-        so["sellout_revenue"] = pd.to_numeric(raw.iloc[:, 5], errors="coerce").fillna(0)
-        so["campaign_tag"]    = raw.iloc[:, 6].astype(str).str.strip()
-        so["notes"]           = raw.iloc[:, 7].astype(str).str.strip() if raw.shape[1] > 7 else ""
-        # Derive market from store_id prefix (e.g. SI-SPAR-001 → SI)
-        so["market"]          = so["store_id"].str[:2].str.upper()
-        results["sellout"] = so
+    # ── Marketing Calendar → mkt_df ────────────────────────────────────────────
+    mkt_rows = []
+    if mkt_raw is not None:
+        cid_col   = next((c for c in mkt_raw.columns if "Campaign ID" in c), None)
+        name_col  = next((c for c in mkt_raw.columns if "Campaign Name" in c), None)
+        type_col  = next((c for c in mkt_raw.columns if "Type" in c), None)
+        mkt_col   = next((c for c in mkt_raw.columns if "Market" in c), None)
+        start_col = next((c for c in mkt_raw.columns if "Start" in c), None)
+        end_col   = next((c for c in mkt_raw.columns if "End" in c), None)
+        media_col = next((c for c in mkt_raw.columns if "Media Spend" in c), None)
+        list_col  = next((c for c in mkt_raw.columns if "Listing" in c), None)
+        disc_col  = next((c for c in mkt_raw.columns if "Trade Discount" in c), None)
+        total_col = next((c for c in mkt_raw.columns if "TOTAL" in c), None)
+        inf_col   = next((c for c in mkt_raw.columns if "Influencer" in c), None)
+        reach_col = next((c for c in mkt_raw.columns if "Reach" in c), None)
+        scope_col  = next((c for c in mkt_raw.columns if "Attribution Scope" in c), None)
+        window_col = next((c for c in mkt_raw.columns if "Attribution Window" in c), None)
+        for _, r in mkt_raw.iterrows():
+            if pd.isna(r.get(cid_col)):
+                continue
+            media   = to_float(r.get(media_col))
+            listing = to_float(r.get(list_col))
+            disc    = to_float(r.get(disc_col))
+            total   = to_float(r.get(total_col)) or (media + listing + disc)
+            raw_scope = str(r.get(scope_col, "Store")).strip() if scope_col else "Store"
+            scope     = "Market" if "market" in raw_scope.lower() else "Store"
+            mkt_rows.append({
+                "id":               str(r.get(cid_col, "")).strip(),
+                "name":             str(r.get(name_col, "")).strip(),
+                "channel":          str(r.get(type_col, "")).strip() if type_col else "",
+                "market":           str(r.get(mkt_col, "")).strip() if mkt_col else "ALL",
+                "start":            str(r.get(start_col, "")).strip() if start_col else "",
+                "end":              str(r.get(end_col, "")).strip() if end_col else "",
+                "media_spend":      media,
+                "listing_fee":      listing,
+                "trade_disc":       disc,
+                "total_spend":      total,
+                "roas":             None,
+                "attributed_sales": 0.0,
+                "influencer":       str(r[inf_col]).strip() if inf_col and pd.notna(r.get(inf_col)) else None,
+                "reach":            to_float(r.get(reach_col)) or None,
+                "scope":            scope,
+                "window_days":      int(to_float(r.get(window_col)) or 14),
+            })
+    mkt_df = pd.DataFrame(mkt_rows) if mkt_rows else pd.DataFrame(
+        columns=["id","name","channel","market","start","end","media_spend",
+                 "listing_fee","trade_disc","total_spend","roas","attributed_sales",
+                 "influencer","reach","scope","window_days"])
 
-    # ── Primary Sales ─────────────────────────────────────
-    prim_sheet = find_sheet(["Primary"])
-    if prim_sheet:
-        raw = pd.read_excel(file, sheet_name=prim_sheet, header=2, engine="openpyxl")
-        raw = raw.dropna(subset=[raw.columns[0]])
-        results["primary_raw"] = raw
+    # ── prim_df & stock_df: no primary sales sheet — return empty frames ───────
+    prim_df = pd.DataFrame(
+        columns=["week","market","sku_id","sku_name","cases","bottles",
+                 "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
+    stock_df = pd.DataFrame(
+        columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 
-    return results
+    return prim_df, so_df, mkt_df, stock_df, PRODUCTS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -381,78 +718,74 @@ def load_excel(file):
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-        <div style='text-align:center; padding: 12px 0 6px;'>
-            <span style='font-size:32px;'>🌿</span><br>
-            <span style='font-family:Georgia; font-size:18px; font-weight:bold; color:#EDE3D8;'>Niamito</span><br>
-            <span style='font-size:11px; color:#a08060; letter-spacing:1px; text-transform:uppercase;'>
-                Marketing Intelligence
-            </span>
+        <div style='padding: 32px 4px 24px; text-align:center;'>
+            <div style='font-family:Georgia,serif; font-size:22px; font-weight:700;
+                        color:#EDE3D8; letter-spacing:-0.4px; line-height:1;'>Niamito</div>
+            <div style='font-size:9px; color:rgba(237,227,216,0.28); letter-spacing:3px;
+                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Business Intelligence</div>
         </div>
-        <hr style='border-color:#4a3020; margin:10px 0 16px;'>
     """, unsafe_allow_html=True)
 
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Data Source</p>", unsafe_allow_html=True)
-
     uploaded = st.file_uploader(
-        "Upload Niamito_Master_Tables.xlsx",
+        "Data source",
         type=["xlsx"],
-        help="Download from Google Drive → drag here to refresh",
+        help="Upload Niamito_Master_Tables.xlsx from Google Drive",
+        key="file_uploader",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Market Filter</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
 
     market_filter = st.multiselect(
         "Markets",
         options=["SI", "HR", "DE"],
         default=["SI", "HR", "DE"],
-        label_visibility="collapsed",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Period</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
 
     period = st.radio(
         "Period",
-        options=["All data", "Last 4 weeks", "Last 8 weeks", "Last 13 weeks"],
+        options=["All data", "Last month", "Last quarter", "Custom range"],
         index=0,
-        label_visibility="collapsed",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("""
-        <div style='font-size:10px; color:#6b4c30; text-align:center; padding-bottom:10px;'>
-            Refresh: upload new Excel<br>from Google Drive
-        </div>
-    """, unsafe_allow_html=True)
+    custom_range = None
+    if period == "Custom range":
+        custom_range = st.date_input(
+            "Date range",
+            value=(pd.Timestamp("2026-04-01").date(), pd.Timestamp("2026-05-19").date()),
+            min_value=pd.Timestamp("2026-01-01").date(),
+            max_value=pd.Timestamp("2026-12-31").date(),
+            format="DD/MM/YYYY",
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 demo_mode = True
-prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
+PRODUCTS = {
+    "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
+    "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
+    "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
+    "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+}
+prim_df  = pd.DataFrame(columns=["week","market","sku_id","sku_name","cases","bottles",
+                                  "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
+so_df    = pd.DataFrame(columns=["week","market","sku_id","sku_name","bottles_sold",
+                                  "consumer_price","sellout_revenue","funnel_type"])
+mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","media_spend",
+                                  "listing_fee","trade_disc","total_spend","roas","attributed_sales",
+                                  "influencer","reach"])
+stock_df = pd.DataFrame(columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 
 if uploaded is not None:
     try:
-        loaded = load_excel(uploaded)
-        if loaded:
-            demo_mode = False
-            # Replace marketing data if present
-            if "marketing" in loaded and not loaded["marketing"].empty:
-                mkt_df = loaded["marketing"]
-                st.sidebar.success(f"✓ {len(mkt_df)} campaigns loaded")
-            # Replace sell-out data if present
-            if "sellout" in loaded and not loaded["sellout"].empty:
-                so_df = loaded["sellout"]
-                st.sidebar.success(f"✓ {len(so_df)} sell-out rows loaded")
-            else:
-                st.sidebar.info("No sell-out data yet — showing demo sell-out")
-        else:
-            st.sidebar.warning("Could not read sheets — using demo data")
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS = load_excel(uploaded)
+        demo_mode = False
+        st.sidebar.success("✓ Data loaded")
     except Exception as e:
-        st.sidebar.error(f"Error reading file: {e}")
-        demo_mode = True
+        st.sidebar.error(f"Could not read file: {e}")
 
 # ── Apply market filter ───────────────────────────────
 if market_filter:
@@ -464,12 +797,18 @@ else:
     prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
 
 # ── Apply period filter ───────────────────────────────
+today = pd.Timestamp("2026-05-19")
 cutoff_map = {
-    "Last 4 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=4),
-    "Last 8 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=8),
-    "Last 13 weeks": pd.Timestamp("2026-05-11") - timedelta(weeks=13),
+    "Last month":   (today.replace(day=1) - pd.DateOffset(months=1)),
+    "Last quarter": (today - pd.DateOffset(months=3)),
 }
-if period != "All data":
+if period == "Custom range":
+    if custom_range and len(custom_range) == 2:
+        start_ts, end_ts = pd.Timestamp(custom_range[0]), pd.Timestamp(custom_range[1])
+        prim_f  = prim_f[(prim_f["week"] >= start_ts) & (prim_f["week"] <= end_ts)]
+        so_f    = so_f[(so_f["week"] >= start_ts) & (so_f["week"] <= end_ts)]
+        stock_f = stock_f[(stock_f["week"] >= start_ts) & (stock_f["week"] <= end_ts)]
+elif period != "All data":
     cutoff  = cutoff_map[period]
     prim_f  = prim_f[prim_f["week"] >= cutoff]
     so_f    = so_f[so_f["week"] >= cutoff]
@@ -481,7 +820,7 @@ if period != "All data":
 # ──────────────────────────────────────────────────────────────────────────────
 col_logo, col_title = st.columns([0.06, 0.94])
 with col_title:
-    st.markdown("<h1>Niamito · Marketing Intelligence</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Niamito · Business Intelligence</h1>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='color:{MID}; font-size:12px; margin-top:-6px;'>"
         f"{'⚠️ Demo data — upload your Master Tables to see live numbers' if demo_mode else '✓ Live data'}"
@@ -497,11 +836,11 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊  Overview",
-    "🔄  Sales Funnel",
-    "📣  Marketing ROI",
-    "💸  Value Leakage",
-    "📦  SKU Performance",
+    "Overview",
+    "Sales Funnel",
+    "Marketing ROI",
+    "Value Leakage",
+    "SKU Performance",
 ])
 
 
@@ -510,14 +849,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
 
-    # ── KPI row ──────────────────────────────────────────
-    total_so_units = so_f["bottles_sold"].sum()
-    total_so_rev   = so_f["sellout_revenue"].sum()
-    total_mkt_spd  = mkt_f["total_spend"].sum()
-    blended_roas   = (mkt_f["attributed_sales"].sum() / max(mkt_f["total_spend"].sum(), 1))
-    total_net_rev  = prim_f["net_revenue"].sum()
-    total_gross    = prim_f["gross_revenue"].sum()
-    # Cost per bottle sold (marketing efficiency in units, not revenue)
+    # ── KPI row — units first ─────────────────────────────
+    total_so_units  = so_f["bottles_sold"].sum()
+    total_so_rev    = so_f["sellout_revenue"].sum()
+    total_mkt_spd   = mkt_f["total_spend"].sum()
+    blended_roas    = (mkt_f["attributed_sales"].sum() / max(mkt_f["total_spend"].sum(), 1))
+    total_net_rev   = prim_f["net_revenue"].sum()
+    total_gross     = prim_f["gross_revenue"].sum()
     cost_per_bottle = total_mkt_spd / max(total_so_units, 1)
 
     k1, k2, k3, k4 = st.columns(4)
@@ -536,31 +874,38 @@ with tab1:
     c_left, c_right = st.columns([0.6, 0.4])
 
     with c_left:
-        so_weekly = (
-            so_f.groupby(["week", "market"])
-            .agg(bottles=("bottles_sold", "sum"), revenue=("sellout_revenue", "sum"))
-            .reset_index()
+        so_weekly = so_f.groupby(["week", "market"]).agg(
+            bottles=("bottles_sold", "sum"),
+            revenue=("sellout_revenue", "sum"),
+        ).reset_index()
+        so_metric = st.radio(
+            "Show:", ["Bottles sold", "Consumer revenue (€)"],
+            horizontal=True, key="so_metric"
         )
-        # Toggle: units or revenue
-        so_metric = st.radio("Show:", ["Bottles sold", "Consumer revenue (€)"],
-                             horizontal=True, key="so_metric")
         y_col   = "bottles" if so_metric == "Bottles sold" else "revenue"
-        y_label = "Bottles" if so_metric == "Bottles sold" else "€"
-
+        chart_title = (
+            "Sell-Out Bottles by Market (weekly)"
+            if so_metric == "Bottles sold"
+            else "Sell-Out Revenue by Market (weekly)"
+        )
         fig = go.Figure()
         for mkt in (market_filter or ["SI", "HR", "DE"]):
             d = so_weekly[so_weekly["market"] == mkt]
+            hover = (
+                f"<b>{mkt}</b><br>Week: %{{x|%d %b}}<br>%{{y:,}} bottles<extra></extra>"
+                if so_metric == "Bottles sold"
+                else f"<b>{mkt}</b><br>Week: %{{x|%d %b}}<br>€%{{y:,.0f}}<extra></extra>"
+            )
             fig.add_trace(go.Scatter(
                 x=d["week"], y=d[y_col],
                 mode="lines+markers",
                 name=mkt,
                 line=dict(color=MARKET_COLORS.get(mkt, BROWN), width=2.5),
                 marker=dict(size=5),
-                hovertemplate=f"<b>{mkt}</b><br>Week: %{{x|%d %b}}<br>{y_label}%{{y:,.0f}}<extra></extra>",
+                hovertemplate=hover,
             ))
-        title = f"Sell-Out {'Bottles Sold' if y_col=='bottles' else 'Revenue'} by Market (weekly)"
-        layout = base_layout(title, height=300)
-        if y_col == "revenue":
+        layout = base_layout(chart_title, height=320)
+        if so_metric != "Bottles sold":
             layout["yaxis"]["tickprefix"] = "€"
         fig.update_layout(**layout)
         st.plotly_chart(fig, use_container_width=True)
@@ -687,7 +1032,7 @@ with tab2:
                 x=stock_mkt["week"], y=stock_mkt["stock_cases"],
                 fill="tozeroy", mode="lines",
                 line=dict(color=LAVEN, width=2),
-                fillcolor=LAVEN + "55",
+                fillcolor="rgba(179, 184, 217, 0.33)",
                 name="Stock (cases)",
                 hovertemplate="Week: %{x|%d %b}<br>Stock: %{y:,} cases<extra></extra>",
             ))
@@ -781,7 +1126,7 @@ with tab3:
         layout = base_layout(title, height=max(280, len(df) * 44 + 60))
         layout["xaxis"]["title"] = "ROAS"
         layout["margin"]["l"] = 190
-        layout["plot_bgcolor"] = color_accent + "18"
+        layout["plot_bgcolor"] = hex_alpha(color_accent, 0.094)
         fig.update_layout(**layout)
         return fig
 
@@ -998,14 +1343,13 @@ with tab4:
 with tab5:
 
     st.markdown("<h2>SKU Performance — Sell-Out</h2>", unsafe_allow_html=True)
-    st.markdown(f"<p style='font-size:11px;color:{MID};margin-top:-8px;'>Primary metric: bottles sold. Revenue shown as context.</p>", unsafe_allow_html=True)
 
     # ── Sell-out by SKU ───────────────────────────────────
     sku_so = so_f.groupby("sku_id").agg(
         sku_name=("sku_name", "first"),
         bottles=("bottles_sold", "sum"),
         revenue=("sellout_revenue", "sum"),
-    ).reset_index().sort_values("bottles", ascending=False)   # sort by units, not revenue
+    ).reset_index().sort_values("bottles", ascending=False)
 
     c_sku1, c_sku2 = st.columns(2)
 
@@ -1016,10 +1360,9 @@ with tab5:
             marker=dict(color=[SKU_COLORS.get(s, BROWN) for s in sku_so["sku_id"]]),
             text=[f"{v:,.0f}" for v in sku_so["bottles"]],
             textposition="outside",
-            hovertemplate="<b>%{x}</b><br>%{y:,.0f} bottles<extra></extra>",
+            hovertemplate="<b>%{x}</b><br>%{y:,} bottles<extra></extra>",
         ))
-        layout_sku = base_layout("Bottles Sold by SKU", height=320)
-        layout_sku["yaxis"]["title"] = "Bottles sold"
+        layout_sku = base_layout("Bottles Sold by SKU (sell-out)", height=320)
         layout_sku["xaxis"]["tickangle"] = -15
         fig_sku.update_layout(**layout_sku)
         st.plotly_chart(fig_sku, use_container_width=True)
@@ -1031,11 +1374,12 @@ with tab5:
             hole=0.5,
             marker=dict(colors=[SKU_COLORS.get(s, BROWN) for s in sku_so["sku_id"]],
                         line=dict(color=CREAM, width=2)),
-            textinfo="percent+label",
+            textinfo="percent",
             hovertemplate="<b>%{label}</b><br>%{value:,} bottles<extra></extra>",
         ))
-        l_sku_p = base_layout("Volume Share by SKU (bottles)", height=320, legend_below=False)
-        l_sku_p["showlegend"] = False
+        l_sku_p = base_layout("Bottle Share by SKU", height=320, legend_below=False)
+        l_sku_p["legend"]["x"] = 1.0
+        l_sku_p["legend"]["y"] = 0.5
         fig_sku_p.update_layout(**l_sku_p)
         st.plotly_chart(fig_sku_p, use_container_width=True)
 
@@ -1099,17 +1443,27 @@ with tab5:
         so_revenue=("sellout_revenue", "sum"),
     )
     sku_tbl = prim_sku.merge(so_sku, on="sku_id", how="left")
-    sku_tbl["disc_%"]      = (sku_tbl["discount"] / sku_tbl["gross"] * 100).round(1)
-    sku_tbl["so_bottles"]  = sku_tbl["so_bottles"].fillna(0).astype(int)
-    sku_tbl["so_revenue"]  = sku_tbl["so_revenue"].fillna(0)
-    sku_tbl["sell_through"] = (sku_tbl["so_bottles"] / (sku_tbl["cases"] * 12).clip(lower=1) * 100).round(1)
+    sku_tbl["disc_%"]       = (sku_tbl["discount"] / sku_tbl["gross"] * 100).round(1)
+    sku_tbl["so_bottles"]   = sku_tbl["so_bottles"].fillna(0)
+    sku_tbl["so_revenue"]   = sku_tbl["so_revenue"].fillna(0)
+    # Sell-Through %: bottles sold at consumer ÷ bottles shipped to distributor (cases × 12)
+    sku_tbl["sell_through"] = (
+        sku_tbl["so_bottles"] / (sku_tbl["cases"] * 12).clip(lower=1) * 100
+    ).round(1)
 
-    out = sku_tbl[["sku_name", "cases", "so_bottles", "sell_through", "gross", "discount", "disc_%", "net", "so_revenue"]].copy()
-    out.columns = ["SKU", "Cases (primary)", "Bottles Sold", "Sell-Through %", "Gross (€)", "Trade Disc (€)", "Disc %", "Net Rev (€)", "SO Revenue (€)"]
+    out = sku_tbl[[
+        "sku_name", "cases", "so_bottles", "sell_through",
+        "gross", "discount", "disc_%", "net", "so_revenue"
+    ]].copy()
+    out.columns = [
+        "SKU", "Cases (primary)", "Bottles Sold", "Sell-Through %",
+        "Gross (€)", "Trade Disc (€)", "Disc %", "Net Rev (€)", "SO Revenue (€)"
+    ]
     for col in ["Gross (€)", "Trade Disc (€)", "Net Rev (€)", "SO Revenue (€)"]:
         out[col] = out[col].apply(lambda x: f"€{x:,.0f}")
     out["Disc %"]         = out["Disc %"].apply(lambda x: f"{x:.1f}%")
-    out["Sell-Through %"] = out["Sell-Through %"].apply(lambda x: f"{x:.0f}%")
+    out["Sell-Through %"] = out["Sell-Through %"].apply(lambda x: f"{x:.1f}%")
+    out["Bottles Sold"]   = out["Bottles Sold"].apply(lambda x: f"{int(x):,}")
 
     st.dataframe(out, use_container_width=True, hide_index=True)
 
@@ -1120,7 +1474,7 @@ with tab5:
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(
     f"<p style='text-align:center; color:{MID}; font-size:10px;'>"
-    "Niamito Marketing Intelligence · "
+    "Niamito Business Intelligence · "
     "Data: Niamito_Master_Tables.xlsx · "
     "Built with Streamlit · "
     "{'Demo mode — upload real data via sidebar' if demo_mode else 'Live data'}"
