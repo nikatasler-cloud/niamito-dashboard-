@@ -25,6 +25,12 @@ YELLOW = "#EDD96A"
 CREAM  = "#F9F4EF"
 MID    = "#6b4c30"
 
+def hex_alpha(hex_color, alpha):
+    """Convert a 6-digit hex color + float alpha to an rgba() string."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
 MARKET_COLORS = {"SI": BROWN, "HR": LAVEN, "DE": GREEN}
 SKU_COLORS    = {
     "NIA-OG-250": BROWN,
@@ -935,7 +941,7 @@ with tab3:
         layout = base_layout(title, height=max(280, len(df) * 44 + 60))
         layout["xaxis"]["title"] = "ROAS"
         layout["margin"]["l"] = 190
-        layout["plot_bgcolor"] = color_accent + "18"
+        layout["plot_bgcolor"] = hex_alpha(color_accent, 0.094)
         fig.update_layout(**layout)
         return fig
 
