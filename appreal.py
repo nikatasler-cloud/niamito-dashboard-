@@ -526,32 +526,155 @@ def generate_demo_data():
 # ──────────────────────────────────────────────────────────────────────────────
 def load_excel(file):
     """
-    Try to load Primary Sales and Marketing Calendar from uploaded Master Tables.
-    Returns (prim_df, mkt_df) or raises an error message.
+    Load Niamito_Master_Tables.xlsx and map all sheets to the app's
+    internal dataframe schema. Returns (prim_df, so_df, mkt_df, stock_df, PRODUCTS).
     """
-    xl = pd.ExcelFile(file, engine="openpyxl")
-    sheets = xl.sheet_names
+    xl  = pd.ExcelFile(file, engine="openpyxl")
+    raw = {}
+    for s in xl.sheet_names:
+        try:
+            df = pd.read_excel(xl, sheet_name=s, header=2, engine="openpyxl")
+            # flatten newline-containing column names
+            df.columns = [str(c).replace("\n", " ").strip() for c in df.columns]
+            df = df.dropna(how="all")
+            raw[s] = df
+        except Exception:
+            pass
 
-    def find_sheet(keywords):
-        for s in sheets:
-            if any(k.lower() in s.lower() for k in keywords):
-                return s
+    def find(keywords):
+        for name, df in raw.items():
+            if any(k.lower() in name.lower() for k in keywords):
+                return df
         return None
 
-    prim_sheet = find_sheet(["Primary", "Sales"])
-    mkt_sheet  = find_sheet(["Marketing", "Calendar"])
+    prod_raw  = find(["Product"])
+    store_raw = find(["Store"])
+    mkt_raw   = find(["Marketing", "Calendar"])
+    so_raw    = find(["Sell-out", "Sell out", "Sellout"])
 
-    results = {}
-    if prim_sheet:
-        df = pd.read_excel(file, sheet_name=prim_sheet, header=2, engine="openpyxl")
-        df.columns = [str(c).strip() for c in df.columns]
-        results["primary"] = df
-    if mkt_sheet:
-        df = pd.read_excel(file, sheet_name=mkt_sheet, header=2, engine="openpyxl")
-        df.columns = [str(c).strip() for c in df.columns]
-        results["marketing"] = df
+    # ── PRODUCTS dict ──────────────────────────────────────────────────────────
+    PRODUCTS = {}
+    if prod_raw is not None:
+        sku_col  = next((c for c in prod_raw.columns if "Internal SKU" in c), None)
+        name_col = next((c for c in prod_raw.columns if "Product Name" in c), None)
+        size_col = next((c for c in prod_raw.columns if "Size" in c), None)
+        mkt_col  = next((c for c in prod_raw.columns if "Market" in c), None)
+        margin_col = next((c for c in prod_raw.columns if "Margin" in c), None)
+        for _, r in prod_raw.iterrows():
+            if pd.isna(r.get(sku_col, None)):
+                continue
+            sku = str(r[sku_col]).strip()
+            PRODUCTS[sku] = {
+                "name":  str(r[name_col]).strip() if name_col else sku,
+                "price": float(r[margin_col]) if margin_col and pd.notna(r[margin_col]) else 0.0,
+                "bpc":   1,
+            }
+    if not PRODUCTS:
+        PRODUCTS = {
+            "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
+            "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
+            "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
+            "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+        }
 
-    return results
+    # ── Store lookup: Store ID → (market, tier) ────────────────────────────────
+    store_map = {}   # store_id → {"market": str, "tier": int}
+    if store_raw is not None:
+        sid_col = next((c for c in store_raw.columns if "Store ID" in c or "Retailer Store" in c), None)
+        mkt_col = next((c for c in store_raw.columns if "Market" in c), None)
+        tier_col = next((c for c in store_raw.columns if "Tier" in c), None)
+        if sid_col:
+            for _, r in store_raw.iterrows():
+                sid = str(r[sid_col]).strip()
+                mkt  = str(r[mkt_col]).strip() if mkt_col and pd.notna(r.get(mkt_col)) else "SI"
+                tier = int(r[tier_col]) if tier_col and pd.notna(r.get(tier_col)) else 3
+                store_map[sid] = {"market": mkt, "tier": tier}
+
+    # ── Sell-out → so_df ───────────────────────────────────────────────────────
+    so_rows = []
+    if so_raw is not None:
+        date_col  = next((c for c in so_raw.columns if "Date" in c), None)
+        store_col = next((c for c in so_raw.columns if "Store ID" in c), None)
+        name_col  = next((c for c in so_raw.columns if "Product Name" in c), None)
+        units_col = next((c for c in so_raw.columns if "Units" in c), None)
+        rev_col   = next((c for c in so_raw.columns if "Revenue" in c), None)
+        for _, r in so_raw.iterrows():
+            if pd.isna(r.get(units_col)):
+                continue
+            raw_date = r.get(date_col)
+            try:
+                dt = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
+                # snap to Monday of that week
+                week = dt - pd.Timedelta(days=dt.weekday())
+            except Exception:
+                week = pd.NaT
+            sid  = str(r.get(store_col, "")).strip()
+            info = store_map.get(sid, {"market": "SI", "tier": 3})
+            units = float(r[units_col]) if pd.notna(r.get(units_col)) else 0
+            rev   = float(r[rev_col]) if rev_col and pd.notna(r.get(rev_col)) else 0
+            so_rows.append({
+                "week":           week,
+                "market":         info["market"],
+                "sku_id":         sid,
+                "sku_name":       str(r.get(name_col, "")).strip(),
+                "bottles_sold":   int(units),
+                "consumer_price": round(rev / units, 2) if units > 0 else 0,
+                "sellout_revenue": round(rev, 2),
+                "funnel_type":    f"{info['tier']}-tier",
+            })
+    so_df = pd.DataFrame(so_rows) if so_rows else pd.DataFrame(
+        columns=["week","market","sku_id","sku_name","bottles_sold","consumer_price","sellout_revenue","funnel_type"])
+
+    # ── Marketing Calendar → mkt_df ────────────────────────────────────────────
+    mkt_rows = []
+    if mkt_raw is not None:
+        cid_col   = next((c for c in mkt_raw.columns if "Campaign ID" in c), None)
+        name_col  = next((c for c in mkt_raw.columns if "Campaign Name" in c), None)
+        type_col  = next((c for c in mkt_raw.columns if "Type" in c), None)
+        mkt_col   = next((c for c in mkt_raw.columns if "Market" in c), None)
+        start_col = next((c for c in mkt_raw.columns if "Start" in c), None)
+        end_col   = next((c for c in mkt_raw.columns if "End" in c), None)
+        media_col = next((c for c in mkt_raw.columns if "Media Spend" in c), None)
+        list_col  = next((c for c in mkt_raw.columns if "Listing" in c), None)
+        disc_col  = next((c for c in mkt_raw.columns if "Trade Discount" in c), None)
+        total_col = next((c for c in mkt_raw.columns if "TOTAL" in c), None)
+        inf_col   = next((c for c in mkt_raw.columns if "Influencer" in c), None)
+        reach_col = next((c for c in mkt_raw.columns if "Reach" in c), None)
+        for _, r in mkt_raw.iterrows():
+            if pd.isna(r.get(cid_col)):
+                continue
+            media  = float(r[media_col]) if media_col and pd.notna(r.get(media_col)) else 0
+            listing = float(r[list_col]) if list_col and pd.notna(r.get(list_col)) else 0
+            disc   = float(r[disc_col]) if disc_col and pd.notna(r.get(disc_col)) else 0
+            total  = float(r[total_col]) if total_col and pd.notna(r.get(total_col)) else media + listing + disc
+            mkt_rows.append({
+                "id":               str(r.get(cid_col, "")).strip(),
+                "name":             str(r.get(name_col, "")).strip(),
+                "channel":          str(r.get(type_col, "")).strip() if type_col else "",
+                "market":           str(r.get(mkt_col, "")).strip() if mkt_col else "ALL",
+                "start":            str(r.get(start_col, "")).strip() if start_col else "",
+                "end":              str(r.get(end_col, "")).strip() if end_col else "",
+                "media_spend":      media,
+                "listing_fee":      listing,
+                "trade_disc":       disc,
+                "total_spend":      total,
+                "roas":             None,
+                "attributed_sales": 0.0,
+                "influencer":       str(r[inf_col]).strip() if inf_col and pd.notna(r.get(inf_col)) else None,
+                "reach":            float(r[reach_col]) if reach_col and pd.notna(r.get(reach_col)) else None,
+            })
+    mkt_df = pd.DataFrame(mkt_rows) if mkt_rows else pd.DataFrame(
+        columns=["id","name","channel","market","start","end","media_spend",
+                 "listing_fee","trade_disc","total_spend","roas","attributed_sales","influencer","reach"])
+
+    # ── prim_df & stock_df: no primary sales sheet — return empty frames ───────
+    prim_df = pd.DataFrame(
+        columns=["week","market","sku_id","sku_name","cases","bottles",
+                 "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
+    stock_df = pd.DataFrame(
+        columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
+
+    return prim_df, so_df, mkt_df, stock_df, PRODUCTS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -608,21 +731,13 @@ demo_mode = True
 prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
 
 if uploaded is not None:
-    # Detect new file and clear cache so stale demo data doesn't persist
-    file_id = f"{uploaded.name}_{uploaded.size}"
-    if st.session_state.get("last_file_id") != file_id:
-        st.cache_data.clear()
-        st.session_state["last_file_id"] = file_id
-        prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
     try:
-        loaded = load_excel(uploaded)
-        if loaded:
-            demo_mode = False
-            st.sidebar.success("✓ Data loaded from file")
-        else:
-            st.sidebar.warning("Could not read sheets — using demo data")
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS = load_excel(uploaded)
+        demo_mode = False
+        st.sidebar.success("✓ Data loaded from file")
     except Exception as e:
-        st.sidebar.error(f"Error reading file: {e}")
+        st.sidebar.error(f"Could not read file: {e}")
+        # keep demo data on error
 
 # ── Apply market filter ───────────────────────────────
 if market_filter:
