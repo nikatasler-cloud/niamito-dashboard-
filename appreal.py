@@ -1,5 +1,5 @@
 """
-Niamito Marketing Intelligence Dashboard
+Niamito Business Intelligence Dashboard
 app.py  ·  Streamlit Community Cloud deployment
 GitHub repo: nikatasler-cloud/niamito-dashboard
 """
@@ -37,7 +37,7 @@ SKU_COLORS    = {
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Niamito · Marketing Intelligence",
+    page_title="Niamito · Business Intelligence",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -48,81 +48,300 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── backgrounds ──────────────────────────────── */
-.stApp { background-color: #EDE3D8; }
-section[data-testid="stSidebar"] { background-color: #2C1A0E !important; }
-section[data-testid="stSidebar"] * { color: #EDE3D8 !important; }
-section[data-testid="stSidebar"] .stFileUploader label { color: #EDE3D8 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* ── layout ───────────────────────────────────── */
-.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
+/* ─────────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────────── */
+html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, input {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    -webkit-font-smoothing: antialiased !important;
+    -moz-osx-font-smoothing: grayscale !important;
+}
 
-/* ── metric cards ─────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   APP BACKGROUND
+───────────────────────────────────────────────── */
+.stApp { background-color: #EEE6DC; }
+
+/* ─────────────────────────────────────────────────
+   SIDEBAR
+───────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: #1C1008 !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] label {
+    color: rgba(240,232,220,0.70) !important;
+}
+section[data-testid="stSidebar"] .stMarkdown small {
+    color: rgba(240,232,220,0.40) !important;
+    font-size: 10px !important;
+}
+
+/* hide sidebar collapse button */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarHeader"] { display: none !important; }
+
+/* ── section labels ─────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    font-size: 9px !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    color: rgba(240,232,220,0.35) !important;
+    font-weight: 600 !important;
+    margin-bottom: 6px !important;
+}
+
+/* ── upload drop zone ─────────────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1.5px dashed rgba(240,232,220,0.18) !important;
+    border-radius: 16px !important;
+    transition: all 0.2s ease !important;
+    padding: 20px 16px !important;
+    text-align: center !important;
+}
+/* stretch the span wrapper so the button fills full width */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > span {
+    width: 100% !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
+    border-color: rgba(240,232,220,0.40) !important;
+    background: rgba(255,255,255,0.08) !important;
+}
+/* the browse button */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+    background: #EDE3D8 !important;
+    color: #111008 !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1px !important;
+    padding: 9px 0 !important;
+    width: 100% !important;
+    transition: all 0.15s ease !important;
+    display: block !important;
+}
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
+    background: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+/* hide the icon wrapper inside the button (hides icon + removes its flex gap) */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {
+    display: none !important;
+}
+/* force button text dark — overrides the broad sidebar rgba text rule */
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button p,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span,
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button div {
+    color: #111008 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+}
+/* hide file size / format hint */
+[data-testid="stFileUploaderDropzoneInstructions"],
+section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
+    display: none !important;
+}
+
+/* ── date range picker ───────────────────── */
+section[data-testid="stSidebar"] [data-testid="stDateInput"] label {
+    display: none !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(240,232,220,0.15) !important;
+    border-radius: 12px !important;
+    padding: 2px 4px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input {
+    color: rgba(240,232,220,0.85) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    text-align: center !important;
+    background: transparent !important;
+}
+section[data-testid="stSidebar"] [data-testid="stDateInput"] input::placeholder {
+    color: rgba(240,232,220,0.35) !important;
+}
+
+/* ── multiselect ──────────────────────────── */
+section[data-testid="stSidebar"] span[data-baseweb="tag"] {
+    background: rgba(240,232,220,0.12) !important;
+    border: 1px solid rgba(240,232,220,0.20) !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    padding: 3px 10px !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(240,232,220,0.12) !important;
+    border-radius: 12px !important;
+}
+
+/* ── period radio → pill buttons ─────────── */
+section[data-testid="stSidebar"] [data-testid="stRadio"] > div {
+    gap: 3px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    padding: 8px 14px !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
+    width: 100% !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
+    background: rgba(237,221,210,0.13) !important;
+    border-color: rgba(240,232,220,0.22) !important;
+}
+section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+
+/* ─────────────────────────────────────────────────
+   MAIN CONTENT
+───────────────────────────────────────────────── */
+.block-container {
+    padding-top: 1.8rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 1400px !important;
+}
+
+/* ── metric cards ─────────────────────────── */
 div[data-testid="metric-container"] {
     background: #F9F4EF;
-    border: 1.5px solid #d4c5b0;
-    border-radius: 14px;
-    padding: 14px 18px;
+    border: 1px solid rgba(44,26,14,0.10);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.06), 0 2px 6px rgba(44,26,14,0.04), 0 8px 20px rgba(44,26,14,0.07);
 }
 div[data-testid="metric-container"] label {
     color: #6b4c30 !important;
     font-size: 11px !important;
     text-transform: uppercase;
     letter-spacing: 0.6px;
+    font-weight: 600 !important;
 }
 div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #2C1A0E !important;
+    color: #1C1008 !important;
     font-size: 28px !important;
     font-weight: 700 !important;
+    letter-spacing: -0.5px !important;
 }
 div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
     font-size: 12px !important;
 }
 
-/* ── tabs ─────────────────────────────────────── */
+/* ── tabs ─────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px;
-    border-bottom: 2px solid #c8b89a;
-    background: transparent;
+    gap: 4px;
+    background: rgba(44,26,14,0.07) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+    border-bottom: none !important;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #6b4c30;
-    border-radius: 8px 8px 0 0;
+    color: rgba(44,26,14,0.55);
+    border-radius: 8px !important;
     font-size: 13px;
-    padding: 8px 20px;
-    background: transparent;
-    border: none;
+    font-weight: 500;
+    padding: 7px 16px;
+    background: transparent !important;
+    border: none !important;
+    transition: all 0.15s ease !important;
 }
 .stTabs [aria-selected="true"] {
-    color: #2C1A0E !important;
-    font-weight: 700 !important;
-    background: #F9F4EF !important;
+    color: #1C1008 !important;
+    font-weight: 600 !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
 }
 
-/* ── typography ───────────────────────────────── */
-h1 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 20px !important; }
-h2 { color: #2C1A0E !important; font-family: Georgia, serif !important; font-size: 15px !important; margin-top: 1rem !important; }
-h3 { color: #2C1A0E !important; font-size: 13px !important; font-weight: 600 !important; }
+/* ── iOS segmented control — main content radios ─ */
+.stMain [data-testid="stRadio"] > div[role="radiogroup"] {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    background: rgba(44,26,14,0.07) !important;
+    border-radius: 10px !important;
+    padding: 3px !important;
+    gap: 2px !important;
+}
+.stMain label[data-baseweb="radio"] {
+    border-radius: 8px !important;
+    padding: 5px 14px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: rgba(44,26,14,0.55) !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
+    border: none !important;
+    background: transparent !important;
+}
+.stMain label[data-baseweb="radio"]:has(input:checked) {
+    background: #FFFFFF !important;
+    color: #1C1008 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
+}
+.stMain label[data-baseweb="radio"] > div:first-child { display: none !important; }
 
-/* ── info banner ──────────────────────────────── */
-.demo-banner {
+/* ── chart captions ───────────────────────── */
+p.chart-caption {
+    font-size: 12.5px;
+    color: #8a6a4a;
+    line-height: 1.55;
+    margin-top: 6px;
+    margin-bottom: 18px;
+    max-width: 520px;
+}
+
+/* ── demo badge ───────────────────────────── */
+.demo-badge {
     background: #EDD96A;
     color: #2C1A0E;
-    border-radius: 10px;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 14px;
-    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 999px;
+    vertical-align: middle;
 }
 
-/* ── divider ──────────────────────────────────── */
-hr { border-color: #c8b89a !important; margin: 8px 0 !important; }
-
-/* ── dataframe ────────────────────────────────── */
-.stDataFrame { border-radius: 10px; overflow: hidden; }
+/* ── page header ──────────────────────────── */
+.page-header {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1C1008;
+    letter-spacing: -0.4px;
+    margin-bottom: 2px;
+}
+.context-line {
+    font-size: 12px;
+    color: #8a6a4a;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CAPTION HELPER
+# ──────────────────────────────────────────────────────────────────────────────
+def caption(text):
+    st.markdown(f"<p class='chart-caption'>{text}</p>", unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -159,7 +378,7 @@ def generate_demo_data():
         "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
         "NIA-VN-250": {"name": "Vanilla 250ml",     "price": 3.20, "bpc": 12},
         "NIA-CH-250": {"name": "Chocolate 250ml",   "price": 3.40, "bpc": 12},
-        "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
+        "NIA-MP-500": {"name": "Multipack 6x250ml", "price": 17.50, "bpc": 6},
     }
 
     weeks = pd.date_range("2026-01-05", "2026-05-11", freq="W-MON")
@@ -243,7 +462,7 @@ def generate_demo_data():
         # scope: "Market" = influencers/events/ATL → market-wide lift by time window
         #        "Store"  = sampling/catalog/display → tag specific store rows
         {"id": "MKT-2026-001", "name": "Q1 Instore Sampling SI",
-         "channel": "BTL – Sampling",         "market": "SI",  "start": "2026-01-15", "end": "2026-02-15",
+         "channel": "BTL - Sampling",         "market": "SI",  "start": "2026-01-15", "end": "2026-02-15",
          "media_spend": 2800,  "listing_fee": 0,    "trade_disc": 0,   "roas": 3.4,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 7},
         {"id": "MKT-2026-002", "name": "Valentine Digital DE",
@@ -251,39 +470,39 @@ def generate_demo_data():
          "media_spend": 1500,  "listing_fee": 0,    "trade_disc": 200, "roas": 2.1,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-003", "name": "Spring OOH Billboard",
-         "channel": "ATL – Out-of-Home",       "market": "ALL", "start": "2026-03-01", "end": "2026-04-30",
+         "channel": "ATL - Out-of-Home",       "market": "ALL", "start": "2026-03-01", "end": "2026-04-30",
          "media_spend": 12000, "listing_fee": 0,    "trade_disc": 0,   "roas": 0.9,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-004", "name": "Mercator Listing Fee",
-         "channel": "Trade – Listing Fee",     "market": "SI",  "start": "2026-01-01", "end": "2026-01-01",
+         "channel": "Trade - Listing Fee",     "market": "SI",  "start": "2026-01-01", "end": "2026-01-01",
          "media_spend": 0,     "listing_fee": 3500, "trade_disc": 0,   "roas": None,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
         {"id": "MKT-2026-005", "name": "Konzum Shelf Push HR",
-         "channel": "BTL – Trade Promo",       "market": "HR",  "start": "2026-02-15", "end": "2026-03-15",
+         "channel": "BTL - Trade Promo",       "market": "HR",  "start": "2026-02-15", "end": "2026-03-15",
          "media_spend": 1200,  "listing_fee": 1800, "trade_disc": 500, "roas": 2.0,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
         {"id": "MKT-2026-006", "name": "@healthy.si.life Collab",
-         "channel": "BTL-Digital – Influencer","market": "SI",  "start": "2026-03-10", "end": "2026-03-24",
+         "channel": "BTL-Digital - Influencer","market": "SI",  "start": "2026-03-10", "end": "2026-03-24",
          "media_spend": 600,   "listing_fee": 0,    "trade_disc": 0,   "roas": 3.1,
          "influencer": "@healthy.si.life", "reach": 28000,  "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-007", "name": "@fitnesswelt_de Collab",
-         "channel": "BTL-Digital – Influencer","market": "DE",  "start": "2026-04-01", "end": "2026-04-21",
+         "channel": "BTL-Digital - Influencer","market": "DE",  "start": "2026-04-01", "end": "2026-04-21",
          "media_spend": 1800,  "listing_fee": 0,    "trade_disc": 0,   "roas": 2.7,
          "influencer": "@fitnesswelt_de", "reach": 112000, "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-008", "name": "@jedihrvati Collab",
-         "channel": "BTL-Digital – Influencer","market": "HR",  "start": "2026-04-10", "end": "2026-04-24",
+         "channel": "BTL-Digital - Influencer","market": "HR",  "start": "2026-04-10", "end": "2026-04-24",
          "media_spend": 900,   "listing_fee": 0,    "trade_disc": 0,   "roas": 2.3,
          "influencer": "@jedihrvati", "reach": 45000,  "scope": "Market", "window_days": 14},
         {"id": "MKT-2026-009", "name": "Q2 Summer Sampling SI",
-         "channel": "BTL – Sampling",         "market": "SI",  "start": "2026-05-01", "end": "2026-06-30",
+         "channel": "BTL - Sampling",         "market": "SI",  "start": "2026-05-01", "end": "2026-06-30",
          "media_spend": 3200,  "listing_fee": 0,    "trade_disc": 0,   "roas": 3.8,
          "influencer": None, "reach": None, "scope": "Store",  "window_days": 7},
         {"id": "MKT-2026-010", "name": "DE Summer Digital",
          "channel": "BTL-Digital",             "market": "DE",  "start": "2026-05-15", "end": "2026-06-30",
          "media_spend": 2400,  "listing_fee": 0,    "trade_disc": 300, "roas": 2.4,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2026-011", "name": "DM Tek – Social Coverage",
-         "channel": "BTL-Digital – Event",     "market": "SI",  "start": "2026-05-30", "end": "2026-05-30",
+        {"id": "MKT-2026-011", "name": "DM Tek - Social Coverage",
+         "channel": "BTL-Digital - Event",     "market": "SI",  "start": "2026-05-30", "end": "2026-05-30",
          "media_spend": 0,     "listing_fee": 0,    "trade_disc": 0,   "roas": None,
          "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
     ]
@@ -334,50 +553,46 @@ def load_excel(file):
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-        <div style='text-align:center; padding: 12px 0 6px;'>
-            <span style='font-size:32px;'>🌿</span><br>
-            <span style='font-family:Georgia; font-size:18px; font-weight:bold; color:#EDE3D8;'>Niamito</span><br>
-            <span style='font-size:11px; color:#a08060; letter-spacing:1px; text-transform:uppercase;'>
-                Marketing Intelligence
-            </span>
+        <div style='padding: 32px 4px 24px; text-align:center;'>
+            <div style='font-family:Georgia,serif; font-size:22px; font-weight:700;
+                        color:#EDE3D8; letter-spacing:-0.4px; line-height:1;'>Niamito</div>
+            <div style='font-size:9px; color:rgba(237,227,216,0.28); letter-spacing:3px;
+                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Business Intelligence</div>
         </div>
-        <hr style='border-color:#4a3020; margin:10px 0 16px;'>
     """, unsafe_allow_html=True)
 
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Data Source</p>", unsafe_allow_html=True)
-
     uploaded = st.file_uploader(
-        "Upload Niamito_Master_Tables.xlsx",
+        "Data source",
         type=["xlsx"],
-        help="Download from Google Drive → drag here to refresh",
+        help="Upload Niamito_Master_Tables.xlsx from Google Drive",
+        key="file_uploader",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Market Filter</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
 
     market_filter = st.multiselect(
         "Markets",
         options=["SI", "HR", "DE"],
         default=["SI", "HR", "DE"],
-        label_visibility="collapsed",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:#a08060; margin-bottom:6px;'>Period</p>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
 
     period = st.radio(
         "Period",
-        options=["All data", "Last 4 weeks", "Last 8 weeks", "Last 13 weeks"],
+        options=["All data", "Last month", "Last quarter", "Custom range"],
         index=0,
-        label_visibility="collapsed",
     )
 
-    st.markdown("<hr style='border-color:#4a3020; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("""
-        <div style='font-size:10px; color:#6b4c30; text-align:center; padding-bottom:10px;'>
-            Refresh: upload new Excel<br>from Google Drive
-        </div>
-    """, unsafe_allow_html=True)
+    custom_range = None
+    if period == "Custom range":
+        custom_range = st.date_input(
+            "Date range",
+            value=(pd.Timestamp("2026-04-01").date(), pd.Timestamp("2026-05-19").date()),
+            min_value=pd.Timestamp("2026-01-01").date(),
+            max_value=pd.Timestamp("2026-12-31").date(),
+            format="DD/MM/YYYY",
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -387,6 +602,12 @@ demo_mode = True
 prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
 
 if uploaded is not None:
+    # Detect new file and clear cache so stale demo data doesn't persist
+    file_id = f"{uploaded.name}_{uploaded.size}"
+    if st.session_state.get("last_file_id") != file_id:
+        st.cache_data.clear()
+        st.session_state["last_file_id"] = file_id
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
     try:
         loaded = load_excel(uploaded)
         if loaded:
@@ -407,12 +628,18 @@ else:
     prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
 
 # ── Apply period filter ───────────────────────────────
+today = pd.Timestamp("2026-05-19")
 cutoff_map = {
-    "Last 4 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=4),
-    "Last 8 weeks":  pd.Timestamp("2026-05-11") - timedelta(weeks=8),
-    "Last 13 weeks": pd.Timestamp("2026-05-11") - timedelta(weeks=13),
+    "Last month":   (today.replace(day=1) - pd.DateOffset(months=1)),
+    "Last quarter": (today - pd.DateOffset(months=3)),
 }
-if period != "All data":
+if period == "Custom range":
+    if custom_range and len(custom_range) == 2:
+        start_ts, end_ts = pd.Timestamp(custom_range[0]), pd.Timestamp(custom_range[1])
+        prim_f  = prim_f[(prim_f["week"] >= start_ts) & (prim_f["week"] <= end_ts)]
+        so_f    = so_f[(so_f["week"] >= start_ts) & (so_f["week"] <= end_ts)]
+        stock_f = stock_f[(stock_f["week"] >= start_ts) & (stock_f["week"] <= end_ts)]
+elif period != "All data":
     cutoff  = cutoff_map[period]
     prim_f  = prim_f[prim_f["week"] >= cutoff]
     so_f    = so_f[so_f["week"] >= cutoff]
@@ -424,7 +651,7 @@ if period != "All data":
 # ──────────────────────────────────────────────────────────────────────────────
 col_logo, col_title = st.columns([0.06, 0.94])
 with col_title:
-    st.markdown("<h1>Niamito · Marketing Intelligence</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Niamito · Business Intelligence</h1>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='color:{MID}; font-size:12px; margin-top:-6px;'>"
         f"{'⚠️ Demo data — upload your Master Tables to see live numbers' if demo_mode else '✓ Live data'}"
@@ -440,11 +667,11 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊  Overview",
-    "🔄  Sales Funnel",
-    "📣  Marketing ROI",
-    "💸  Value Leakage",
-    "📦  SKU Performance",
+    "Overview",
+    "Sales Funnel",
+    "Marketing ROI",
+    "Value Leakage",
+    "SKU Performance",
 ])
 
 
@@ -614,7 +841,7 @@ with tab2:
                 x=stock_mkt["week"], y=stock_mkt["stock_cases"],
                 fill="tozeroy", mode="lines",
                 line=dict(color=LAVEN, width=2),
-                fillcolor=LAVEN + "55",
+                fillcolor="rgba(179, 184, 217, 0.33)",
                 name="Stock (cases)",
                 hovertemplate="Week: %{x|%d %b}<br>Stock: %{y:,} cases<extra></extra>",
             ))
@@ -1041,7 +1268,7 @@ with tab5:
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(
     f"<p style='text-align:center; color:{MID}; font-size:10px;'>"
-    "Niamito Marketing Intelligence · "
+    "Niamito Business Intelligence · "
     "Data: Niamito_Master_Tables.xlsx · "
     "Built with Streamlit · "
     "{'Demo mode — upload real data via sidebar' if demo_mode else 'Live data'}"
