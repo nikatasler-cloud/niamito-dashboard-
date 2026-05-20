@@ -623,6 +623,8 @@ with st.sidebar:
         "Data source",
         type=["xlsx"],
         help="Upload Niamito_Master_Tables.xlsx from Google Drive",
+        key="file_uploader",
+        on_change=lambda: st.cache_data.clear(),
     )
 
     st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
@@ -661,9 +663,40 @@ prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
 if uploaded is not None:
     try:
         loaded = load_excel(uploaded)
-        if loaded:
+        if loaded and "primary" in loaded:
             demo_mode = False
-            st.sidebar.success("✓ Data loaded from file")
+            raw = loaded["primary"]
+            # Map raw Excel columns to expected schema (flexible column matching)
+            col = {c.lower(): c for c in raw.columns}
+            week_col    = next((col[k] for k in col if "week" in k or "date" in k), None)
+            market_col  = next((col[k] for k in col if "market" in k or "country" in k), None)
+            sku_col     = next((col[k] for k in col if "sku" in k or "product" in k or "article" in k), None)
+            gross_col   = next((col[k] for k in col if "gross" in k), None)
+            net_col     = next((col[k] for k in col if "net" in k), None)
+            disc_col    = next((col[k] for k in col if "discount" in k or "disc" in k), None)
+            cases_col   = next((col[k] for k in col if "case" in k or "qty" in k or "quantity" in k), None)
+            if week_col and market_col:
+                prim_df = raw.rename(columns={
+                    week_col: "week",
+                    market_col: "market",
+                    **({sku_col: "sku_id"} if sku_col else {}),
+                    **({gross_col: "gross_revenue"} if gross_col else {}),
+                    **({net_col: "net_revenue"} if net_col else {}),
+                    **({disc_col: "trade_discount"} if disc_col else {}),
+                    **({cases_col: "cases"} if cases_col else {}),
+                }).copy()
+                prim_df["week"] = pd.to_datetime(prim_df["week"], errors="coerce")
+                for missing in ["gross_revenue", "net_revenue", "trade_discount", "cases", "bottles", "sku_id", "sku_name"]:
+                    if missing not in prim_df.columns:
+                        prim_df[missing] = 0
+                so_df    = pd.DataFrame(columns=so_df.columns)
+                stock_df = pd.DataFrame(columns=stock_df.columns)
+                if "marketing" in loaded:
+                    mkt_df = loaded["marketing"]
+                st.sidebar.success("✓ Data loaded from file")
+            else:
+                st.sidebar.warning("Could not find Week/Market columns — using demo data")
+                demo_mode = True
         else:
             st.sidebar.warning("Could not read sheets — using demo data")
     except Exception as e:
