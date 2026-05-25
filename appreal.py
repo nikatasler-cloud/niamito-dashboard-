@@ -1280,11 +1280,12 @@ with tab3:
                     roas_val = row["roas"]
                     roas_str = f"{roas_val:.1f}×" if pd.notna(roas_val) else "pending"
                     roas_col = GREEN if (pd.notna(roas_val) and roas_val >= 2) else (YELLOW if pd.notna(roas_val) else MID)
+                    reach_str = f"{int(reach):,}" if reach else "—"
                     st.markdown(f"""
                     <div style='background:{CREAM}; border:1.5px solid {LAVEN}; border-radius:12px; padding:14px; margin-bottom:8px;'>
                         <p style='font-size:13px; font-weight:700; margin:0; color:{BROWN};'>{row["influencer"]}</p>
                         <p style='font-size:10px; color:{MID}; margin:2px 0 8px; text-transform:uppercase; letter-spacing:0.5px;'>{row["market"]} · Market-level</p>
-                        <p style='margin:3px 0; font-size:12px;'>👁 Reach: <b>{int(reach):,}</b></p>
+                        <p style='margin:3px 0; font-size:12px;'>👁 Reach: <b>{reach_str}</b></p>
                         <p style='margin:3px 0; font-size:12px;'>💶 Spend: <b>€{row["media_spend"]:,.0f}</b></p>
                         <p style='margin:3px 0; font-size:12px;'>📈 ROAS: <b style='color:{roas_col};'>{roas_str}</b></p>
                         <p style='margin:3px 0; font-size:12px;'>💡 CPM: <b>€{cpm:.2f}</b></p>
