@@ -1482,29 +1482,29 @@ with tab2:
             st.plotly_chart(fig_donut, use_container_width=True)
 
         with col_heat:
-            # Campaign count heatmap: month × channel
-            mkt_f3 = mkt_f.copy()
-            mkt_f3["month_str"] = pd.to_datetime(mkt_f3["start"], errors="coerce").dt.to_period("M").astype(str)
-            heat_data = mkt_f3.groupby(["channel","month_str"]).size().unstack(fill_value=0)
-            heat_data = heat_data.sort_index()
-            if not heat_data.empty:
-                fig_heat = go.Figure(go.Heatmap(
-                    z=heat_data.values,
-                    x=heat_data.columns.tolist(),
-                    y=heat_data.index.tolist(),
-                    colorscale=[[0, CREAM], [0.3, LAVEN], [1.0, BROWN]],
-                    text=[[str(v) if v > 0 else "" for v in row] for row in heat_data.values],
-                    texttemplate="%{text}",
-                    hovertemplate="<b>%{y}</b><br>%{x}: %{z} campaigns<extra></extra>",
-                    showscale=False,
+            # Channel summary: spend + campaign count, sorted by spend
+            _ch_sum = mkt_f.groupby("channel").agg(
+                spend=("total_spend","sum"),
+                campaigns=("id","count"),
+            ).reset_index().sort_values("spend", ascending=True)
+            if not _ch_sum.empty:
+                _ch_colors_h = [ch_palette[i % len(ch_palette)] for i in range(len(_ch_sum))]
+                fig_ch_sum = go.Figure()
+                fig_ch_sum.add_trace(go.Bar(
+                    y=_ch_sum["channel"],
+                    x=_ch_sum["spend"],
+                    orientation="h",
+                    marker_color=_ch_colors_h,
+                    text=[f"€{v:,.0f}  ({int(c)} campaign{'s' if c!=1 else ''})"
+                          for v, c in zip(_ch_sum["spend"], _ch_sum["campaigns"])],
+                    textposition="outside",
+                    hovertemplate="<b>%{y}</b><br>Spend: €%{x:,.0f}<extra></extra>",
                 ))
-                l_heat = base_layout("Campaign Activity (count by month)", height=300)
-                l_heat.pop("xaxis", None)
-                l_heat.pop("yaxis", None)
-                l_heat["margin"]["l"] = 130
-                l_heat["margin"]["b"] = 60
-                fig_heat.update_layout(**l_heat)
-                st.plotly_chart(fig_heat, use_container_width=True)
+                l_ch_sum = base_layout("Budget & Campaigns by Channel", height=300)
+                l_ch_sum["xaxis"]["tickprefix"] = "€"
+                l_ch_sum["margin"]["r"] = 160
+                fig_ch_sum.update_layout(**l_ch_sum)
+                st.plotly_chart(fig_ch_sum, use_container_width=True)
 
         # ── Influencer tracker ────────────────────────────────────────────────
         if "influencer" in mkt_f.columns:
@@ -1524,7 +1524,8 @@ with tab2:
                     cols_inf = st.columns(len(row_data))
                     for i, (_, row) in enumerate(row_data.iterrows()):
                         with cols_inf[i]:
-                            reach    = row.get("reach") or 0
+                            _reach_raw = row.get("reach")
+                            reach = 0 if (_reach_raw is None or (isinstance(_reach_raw, float) and pd.isna(_reach_raw))) else float(_reach_raw)
                             cpm      = round(row["media_spend"] / max(reach, 1) * 1000, 2) if reach else 0
                             roas_val = row.get("roas")
                             roas_str = f"{roas_val:.1f}\u00d7" if pd.notna(roas_val) else "pending"
