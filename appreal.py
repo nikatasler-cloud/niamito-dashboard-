@@ -40,6 +40,27 @@ SKU_COLORS    = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# PRODUCT CATEGORIES
+# Edit the keyword lists below to match your product names exactly.
+# The first matching category wins; unmatched products default to Oatmeal.
+# ──────────────────────────────────────────────────────────────────────────────
+ALL_CATEGORIES = ["Niamito Oatmeal", "Niamito Fresh Meal", "Niamito Meal in a Bottle"]
+
+_CAT_KEYWORDS = {
+    "Niamito Meal in a Bottle": ["470", "meal in a bottle"],
+    "Niamito Fresh Meal":       ["fresh", "refrigerat", "390"],
+    # everything else falls through to Oatmeal
+}
+
+def get_product_category(sku_name: str) -> str:
+    """Map a product name to one of three Niamito product categories."""
+    name = str(sku_name).lower()
+    for cat, keywords in _CAT_KEYWORDS.items():
+        if any(k in name for k in keywords):
+            return cat
+    return "Niamito Oatmeal"
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -445,6 +466,7 @@ def generate_demo_data():
                 })
 
     prim_df = pd.DataFrame(primary_rows)
+    prim_df["category"] = prim_df["sku_name"].apply(get_product_category)
 
     # ── Sell-out (Retailer → Consumer) ────────────────────
     sellout_rows = []
@@ -466,6 +488,7 @@ def generate_demo_data():
             "funnel_type": r["funnel_type"],
         })
     so_df = pd.DataFrame(sellout_rows)
+    so_df["category"] = so_df["sku_name"].apply(get_product_category)
 
     # ── Distributor stock (SI & HR) ───────────────────────
     stock_rows = []
@@ -767,6 +790,10 @@ def load_excel(file):
     stock_df = pd.DataFrame(
         columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 
+    # ── Derive product category from SKU name ─────────────
+    prim_df["category"] = prim_df["sku_name"].apply(get_product_category)
+    so_df["category"]   = so_df["sku_name"].apply(get_product_category)
+
     return prim_df, so_df, mkt_df, stock_df, PRODUCTS
 
 
@@ -816,6 +843,25 @@ with st.sidebar:
             format="DD/MM/YYYY",
         )
 
+    st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
+
+    category_filter = st.multiselect(
+        "Product Category",
+        options=ALL_CATEGORIES,
+        default=ALL_CATEGORIES,
+    )
+
+    st.markdown(
+        "<hr style='border:none; border-top:1px solid rgba(255,255,255,0.06); margin:10px 0 8px;'>",
+        unsafe_allow_html=True,
+    )
+
+    metric_mode = st.radio(
+        "View as",
+        options=["Bottles sold", "Revenue (€)"],
+        index=0,
+    )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
@@ -828,9 +874,9 @@ PRODUCTS = {
     "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
 }
 prim_df  = pd.DataFrame(columns=["week","market","sku_id","sku_name","cases","bottles",
-                                  "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
+                                  "list_price","gross_revenue","trade_discount","net_revenue","funnel_type","category"])
 so_df    = pd.DataFrame(columns=["week","market","sku_id","sku_name","bottles_sold",
-                                  "consumer_price","sellout_revenue","funnel_type"])
+                                  "consumer_price","sellout_revenue","funnel_type","category"])
 mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","media_spend",
                                   "listing_fee","trade_disc","total_spend","roas","attributed_sales",
                                   "influencer","reach"])
@@ -852,6 +898,13 @@ if market_filter:
     stock_f = stock_df[stock_df["market"].isin(market_filter)]
 else:
     prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
+
+# ── Apply category filter ─────────────────────────────
+if category_filter and len(category_filter) < len(ALL_CATEGORIES):
+    if "category" in prim_f.columns:
+        prim_f = prim_f[prim_f["category"].isin(category_filter)]
+    if "category" in so_f.columns:
+        so_f   = so_f[so_f["category"].isin(category_filter)]
 
 # ── Apply period filter ───────────────────────────────
 today = pd.Timestamp("2026-05-19")
@@ -935,14 +988,10 @@ with tab1:
             bottles=("bottles_sold", "sum"),
             revenue=("sellout_revenue", "sum"),
         ).reset_index()
-        so_metric = st.radio(
-            "Show:", ["Bottles sold", "Consumer revenue (€)"],
-            horizontal=True, key="so_metric"
-        )
-        y_col   = "bottles" if so_metric == "Bottles sold" else "revenue"
+        y_col   = "bottles" if metric_mode == "Bottles sold" else "revenue"
         chart_title = (
             "Sell-Out Bottles by Market (weekly)"
-            if so_metric == "Bottles sold"
+            if metric_mode == "Bottles sold"
             else "Sell-Out Revenue by Market (weekly)"
         )
         fig = go.Figure()
@@ -950,7 +999,7 @@ with tab1:
             d = so_weekly[so_weekly["market"] == mkt]
             hover = (
                 f"<b>{mkt}</b><br>Week: %{{x|%d %b}}<br>%{{y:,}} bottles<extra></extra>"
-                if so_metric == "Bottles sold"
+                if metric_mode == "Bottles sold"
                 else f"<b>{mkt}</b><br>Week: %{{x|%d %b}}<br>€%{{y:,.0f}}<extra></extra>"
             )
             fig.add_trace(go.Scatter(
@@ -962,7 +1011,7 @@ with tab1:
                 hovertemplate=hover,
             ))
         layout = base_layout(chart_title, height=320)
-        if so_metric != "Bottles sold":
+        if metric_mode != "Bottles sold":
             layout["yaxis"]["tickprefix"] = "€"
         fig.update_layout(**layout)
         st.plotly_chart(fig, use_container_width=True)
@@ -988,26 +1037,35 @@ with tab1:
         fig2.update_layout(**layout2)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── Primary revenue trend ─────────────────────────────
+    # ── Primary revenue / bottles trend ──────────────────
     prim_weekly = prim_f.groupby("week").agg(
         gross=("gross_revenue", "sum"),
         net=("net_revenue", "sum"),
+        bottles=("bottles", "sum"),
     ).reset_index()
 
     fig3 = go.Figure()
-    fig3.add_trace(go.Bar(
-        x=prim_weekly["week"], y=prim_weekly["gross"],
-        name="Gross Revenue", marker_color=LAVEN, opacity=0.7,
-        hovertemplate="Gross: €%{y:,.0f}<extra></extra>",
-    ))
-    fig3.add_trace(go.Bar(
-        x=prim_weekly["week"], y=prim_weekly["net"],
-        name="Net Revenue", marker_color=BROWN,
-        hovertemplate="Net: €%{y:,.0f}<extra></extra>",
-    ))
-    layout3 = base_layout("Primary Sales: Gross vs Net Revenue (weekly, all markets)", height=280)
-    layout3["yaxis"]["tickprefix"] = "€"
-    layout3["barmode"] = "overlay"
+    if metric_mode == "Bottles sold":
+        fig3.add_trace(go.Bar(
+            x=prim_weekly["week"], y=prim_weekly["bottles"],
+            name="Bottles Shipped", marker_color=LAVEN,
+            hovertemplate="Bottles shipped: %{y:,}<extra></extra>",
+        ))
+        layout3 = base_layout("Primary Sales: Bottles Shipped (weekly, all markets)", height=280)
+    else:
+        fig3.add_trace(go.Bar(
+            x=prim_weekly["week"], y=prim_weekly["gross"],
+            name="Gross Revenue", marker_color=LAVEN, opacity=0.7,
+            hovertemplate="Gross: €%{y:,.0f}<extra></extra>",
+        ))
+        fig3.add_trace(go.Bar(
+            x=prim_weekly["week"], y=prim_weekly["net"],
+            name="Net Revenue", marker_color=BROWN,
+            hovertemplate="Net: €%{y:,.0f}<extra></extra>",
+        ))
+        layout3 = base_layout("Primary Sales: Gross vs Net Revenue (weekly, all markets)", height=280)
+        layout3["yaxis"]["tickprefix"] = "€"
+        layout3["barmode"] = "overlay"
     fig3.update_layout(**layout3)
     st.plotly_chart(fig3, use_container_width=True)
 
@@ -1402,62 +1460,93 @@ with tab5:
     st.markdown("<h2>SKU Performance — Sell-Out</h2>", unsafe_allow_html=True)
 
     # ── Sell-out by SKU ───────────────────────────────────
+    _sort_col = "bottles" if metric_mode == "Bottles sold" else "revenue"
     sku_so = so_f.groupby("sku_id").agg(
         sku_name=("sku_name", "first"),
         bottles=("bottles_sold", "sum"),
         revenue=("sellout_revenue", "sum"),
-    ).reset_index().sort_values("bottles", ascending=False)
+    ).reset_index().sort_values(_sort_col, ascending=False)
 
     c_sku1, c_sku2 = st.columns(2)
 
     with c_sku1:
+        _sku_y      = "bottles" if metric_mode == "Bottles sold" else "revenue"
+        _sku_fmt    = (lambda v: f"{v:,.0f}") if metric_mode == "Bottles sold" else (lambda v: f"€{v:,.0f}")
+        _sku_hover  = ("<b>%{x}</b><br>%{y:,} bottles<extra></extra>"
+                       if metric_mode == "Bottles sold"
+                       else "<b>%{x}</b><br>€%{y:,.0f}<extra></extra>")
+        _sku_title  = ("Bottles Sold by SKU (sell-out)"
+                       if metric_mode == "Bottles sold"
+                       else "Revenue by SKU (sell-out)")
         fig_sku = go.Figure(go.Bar(
             x=sku_so["sku_name"],
-            y=sku_so["bottles"],
+            y=sku_so[_sku_y],
             marker=dict(color=[SKU_COLORS.get(s, BROWN) for s in sku_so["sku_id"]]),
-            text=[f"{v:,.0f}" for v in sku_so["bottles"]],
+            text=[_sku_fmt(v) for v in sku_so[_sku_y]],
             textposition="outside",
-            hovertemplate="<b>%{x}</b><br>%{y:,} bottles<extra></extra>",
+            hovertemplate=_sku_hover,
         ))
-        layout_sku = base_layout("Bottles Sold by SKU (sell-out)", height=320)
+        layout_sku = base_layout(_sku_title, height=320)
         layout_sku["xaxis"]["tickangle"] = -15
+        if metric_mode != "Bottles sold":
+            layout_sku["yaxis"]["tickprefix"] = "€"
         fig_sku.update_layout(**layout_sku)
         st.plotly_chart(fig_sku, use_container_width=True)
 
     with c_sku2:
+        _pie_vals   = sku_so["bottles"] if metric_mode == "Bottles sold" else sku_so["revenue"]
+        _pie_hover  = ("<b>%{label}</b><br>%{value:,} bottles<extra></extra>"
+                       if metric_mode == "Bottles sold"
+                       else "<b>%{label}</b><br>€%{value:,.0f}<extra></extra>")
+        _pie_title  = ("Bottle Share by SKU"
+                       if metric_mode == "Bottles sold"
+                       else "Revenue Share by SKU")
         fig_sku_p = go.Figure(go.Pie(
             labels=sku_so["sku_name"],
-            values=sku_so["bottles"],
+            values=_pie_vals,
             hole=0.5,
             marker=dict(colors=[SKU_COLORS.get(s, BROWN) for s in sku_so["sku_id"]],
                         line=dict(color=CREAM, width=2)),
             textinfo="percent",
-            hovertemplate="<b>%{label}</b><br>%{value:,} bottles<extra></extra>",
+            hovertemplate=_pie_hover,
         ))
-        l_sku_p = base_layout("Bottle Share by SKU", height=320, legend_below=False)
+        l_sku_p = base_layout(_pie_title, height=320, legend_below=False)
         l_sku_p["legend"]["x"] = 1.0
         l_sku_p["legend"]["y"] = 0.5
         fig_sku_p.update_layout(**l_sku_p)
         st.plotly_chart(fig_sku_p, use_container_width=True)
 
     # ── SKU × Market heatmap ──────────────────────────────
-    st.markdown("<h2>Revenue by SKU × Market</h2>", unsafe_allow_html=True)
+    _hm_col    = "bottles_sold" if metric_mode == "Bottles sold" else "sellout_revenue"
+    _hm_h2     = ("Bottles Sold by SKU × Market"
+                  if metric_mode == "Bottles sold"
+                  else "Revenue by SKU × Market")
+    _hm_title  = ("Sell-Out Bottles — SKU × Market"
+                  if metric_mode == "Bottles sold"
+                  else "Sell-Out Revenue (€) — SKU × Market")
+    st.markdown(f"<h2>{_hm_h2}</h2>", unsafe_allow_html=True)
 
-    pivot = so_f.groupby(["sku_name", "market"])["sellout_revenue"].sum().unstack(fill_value=0)
+    pivot = so_f.groupby(["sku_name", "market"])[_hm_col].sum().unstack(fill_value=0)
     pivot = pivot.round(0)
+    _hm_text = ([[f"{v:,.0f}" for v in row] for row in pivot.values]
+                if metric_mode == "Bottles sold"
+                else [[f"€{v:,.0f}" for v in row] for row in pivot.values])
 
     fig_heat = go.Figure(go.Heatmap(
         z=pivot.values,
         x=pivot.columns.tolist(),
         y=pivot.index.tolist(),
         colorscale=[[0, CREAM], [0.4, LAVEN], [1.0, BROWN]],
-        text=[[f"€{v:,.0f}" for v in row] for row in pivot.values],
+        text=_hm_text,
         texttemplate="%{text}",
         hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
         showscale=True,
-        colorbar=dict(tickprefix="€", tickfont=dict(color=BROWN, size=10)),
+        colorbar=dict(
+            tickprefix="" if metric_mode == "Bottles sold" else "€",
+            tickfont=dict(color=BROWN, size=10),
+        ),
     ))
-    layout_heat = base_layout("Sell-Out Revenue (€) — SKU × Market", height=280)
+    layout_heat = base_layout(_hm_title, height=280)
     layout_heat.pop("xaxis", None)
     layout_heat.pop("yaxis", None)
     layout_heat["margin"]["l"] = 160
@@ -1467,20 +1556,28 @@ with tab5:
     # ── SKU trend lines ───────────────────────────────────
     st.markdown("<h2>Sell-Out Trend by SKU</h2>", unsafe_allow_html=True)
 
-    sku_trend = so_f.groupby(["week", "sku_id"])["sellout_revenue"].sum().reset_index()
+    _trend_col   = "bottles_sold" if metric_mode == "Bottles sold" else "sellout_revenue"
+    _trend_title = ("Weekly Sell-Out by SKU — Bottles (all markets)"
+                    if metric_mode == "Bottles sold"
+                    else "Weekly Sell-Out by SKU — Revenue (all markets)")
+    sku_trend = so_f.groupby(["week", "sku_id"])[_trend_col].sum().reset_index()
     fig_t = go.Figure()
     for sku in sku_so["sku_id"]:
-        d = sku_trend[sku_trend["sku_id"] == sku]
+        d    = sku_trend[sku_trend["sku_id"] == sku]
         name = PRODUCTS.get(sku, {}).get("name", sku)
+        _hover = (f"<b>{name}</b><br>%{{x|%d %b}}: %{{y:,}} bottles<extra></extra>"
+                  if metric_mode == "Bottles sold"
+                  else f"<b>{name}</b><br>%{{x|%d %b}}: €%{{y:,.0f}}<extra></extra>")
         fig_t.add_trace(go.Scatter(
-            x=d["week"], y=d["sellout_revenue"],
+            x=d["week"], y=d[_trend_col],
             mode="lines",
             name=name,
             line=dict(color=SKU_COLORS.get(sku, BROWN), width=2),
-            hovertemplate=f"<b>{name}</b><br>%{{x|%d %b}}: €%{{y:,.0f}}<extra></extra>",
+            hovertemplate=_hover,
         ))
-    layout_t = base_layout("Weekly Sell-Out by SKU (all markets)", height=300)
-    layout_t["yaxis"]["tickprefix"] = "€"
+    layout_t = base_layout(_trend_title, height=300)
+    if metric_mode != "Bottles sold":
+        layout_t["yaxis"]["tickprefix"] = "€"
     fig_t.update_layout(**layout_t)
     st.plotly_chart(fig_t, use_container_width=True)
 
