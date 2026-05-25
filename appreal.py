@@ -558,15 +558,25 @@ def load_excel(file):
         except (ValueError, TypeError):
             return 0.0
 
-    xl  = pd.ExcelFile(file, engine="openpyxl")
-    raw = {}
-    for s in xl.sheet_names:
+    import openpyxl as _opxl
+    # data_only=True reads cached formula results instead of formula strings
+    _wb  = _opxl.load_workbook(file, data_only=True)
+    raw  = {}
+    for s in _wb.sheetnames:
         try:
-            df = pd.read_excel(xl, sheet_name=s, header=2, engine="openpyxl")
-            # flatten newline-containing column names
-            df.columns = [str(c).replace("\n", " ").strip() for c in df.columns]
-            df = df.dropna(how="all")
-            raw[s] = df
+            ws = _wb[s]
+            # row 3 (1-indexed) is always the column header row in this workbook
+            headers = [
+                str(cell.value).replace("\n", " ").strip() if cell.value else f"_col{i}"
+                for i, cell in enumerate(ws[3])
+            ]
+            rows = []
+            for row in ws.iter_rows(min_row=4, values_only=True):
+                if any(v is not None for v in row):
+                    rows.append(dict(zip(headers, row)))
+            if rows:
+                df = pd.DataFrame(rows).dropna(how="all")
+                raw[s] = df
         except Exception:
             pass
 
@@ -576,28 +586,33 @@ def load_excel(file):
                 return df
         return None
 
-    prod_raw  = find(["Product"])
-    store_raw = find(["Store"])
-    mkt_raw   = find(["Marketing", "Calendar"])
-    so_raw    = find(["Sell-out", "Sell out", "Sellout"])
+    prod_raw = find(["Product"])
+    mkt_raw  = find(["Marketing", "Calendar"])
+    so_raw   = find(["Sell-out", "Sell out", "Sellout"])
+    prim_raw = find(["Primary", "Sales"])
 
-    # ── PRODUCTS dict ──────────────────────────────────────────────────────────
-    PRODUCTS = {}
+    # ── PRODUCTS dict + retailer-name lookup ───────────────────────────────────
+    PRODUCTS        = {}
+    prod_by_ret_name = {}   # retailer_sku_name.lower() → {sku_id, sku_name}
     if prod_raw is not None:
-        sku_col  = next((c for c in prod_raw.columns if "Internal SKU" in c), None)
-        name_col = next((c for c in prod_raw.columns if "Product Name" in c), None)
-        size_col = next((c for c in prod_raw.columns if "Size" in c), None)
-        mkt_col  = next((c for c in prod_raw.columns if "Market" in c), None)
-        margin_col = next((c for c in prod_raw.columns if "Margin" in c), None)
+        ret_name_col = next((c for c in prod_raw.columns if "Retailer SKU Name" in c), None)
+        sku_col      = next((c for c in prod_raw.columns if "Internal SKU" in c), None)
+        name_col     = next((c for c in prod_raw.columns if "Product Name" in c), None)
+        margin_col   = next((c for c in prod_raw.columns if "Margin" in c), None)
         for _, r in prod_raw.iterrows():
             if pd.isna(r.get(sku_col, None)):
                 continue
-            sku = str(r[sku_col]).strip()
+            sku      = str(r[sku_col]).strip()
+            prd_name = str(r[name_col]).strip() if name_col else sku
             PRODUCTS[sku] = {
-                "name":  str(r[name_col]).strip() if name_col else sku,
+                "name":  prd_name,
                 "price": to_float(r.get(margin_col)),
                 "bpc":   1,
             }
+            # also index by retailer SKU name so sell-out rows can resolve to internal SKU
+            if ret_name_col and pd.notna(r.get(ret_name_col)):
+                key = str(r[ret_name_col]).strip().lower()
+                prod_by_ret_name[key] = {"sku_id": sku, "sku_name": prd_name}
     if not PRODUCTS:
         PRODUCTS = {
             "NIA-OG-250": {"name": "Original 250ml",    "price": 3.20, "bpc": 12},
@@ -606,24 +621,17 @@ def load_excel(file):
             "NIA-MP-500": {"name": "Multipack 6×250ml", "price": 17.50, "bpc": 6},
         }
 
-    # ── Store lookup: Store ID → (market, tier) ────────────────────────────────
-    store_map = {}   # store_id → {"market": str, "tier": int}
-    if store_raw is not None:
-        sid_col = next((c for c in store_raw.columns if "Store ID" in c or "Retailer Store" in c), None)
-        mkt_col = next((c for c in store_raw.columns if "Market" in c), None)
-        tier_col = next((c for c in store_raw.columns if "Tier" in c), None)
-        if sid_col:
-            for _, r in store_raw.iterrows():
-                sid = str(r[sid_col]).strip()
-                mkt  = str(r[mkt_col]).strip() if mkt_col and pd.notna(r.get(mkt_col)) else "SI"
-                tier = int(r[tier_col]) if tier_col and pd.notna(r.get(tier_col)) else 3
-                store_map[sid] = {"market": mkt, "tier": tier}
-
     # ── Sell-out → so_df ───────────────────────────────────────────────────────
+    # Market is now a column in the sell-out file itself (SI/HR/DE).
+    # Tier is derived from market: DE = 2-tier (direct), SI/HR = 3-tier (via distributor).
+    def market_to_tier(mkt):
+        return 2 if str(mkt).strip().upper() == "DE" else 3
+
     so_rows = []
     if so_raw is not None:
         date_col  = next((c for c in so_raw.columns if "Date" in c), None)
-        store_col = next((c for c in so_raw.columns if "Store ID" in c), None)
+        store_col = next((c for c in so_raw.columns if "Store" in c), None)
+        mkt_col_s = next((c for c in so_raw.columns if "Market" in c), None)
         name_col  = next((c for c in so_raw.columns if "Product Name" in c), None)
         units_col = next((c for c in so_raw.columns if "Units" in c), None)
         rev_col   = next((c for c in so_raw.columns if "Revenue" in c), None)
@@ -632,24 +640,30 @@ def load_excel(file):
                 continue
             raw_date = r.get(date_col)
             try:
-                dt = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
-                # snap to Monday of that week
+                dt   = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
                 week = dt - pd.Timedelta(days=dt.weekday())
             except Exception:
                 week = pd.NaT
-            sid  = str(r.get(store_col, "")).strip()
-            info = store_map.get(sid, {"market": "SI", "tier": 3})
+            # market comes directly from the sell-out row
+            mkt  = str(r.get(mkt_col_s, "SI")).strip().upper() if mkt_col_s else "SI"
+            if mkt not in ("SI", "HR", "DE"):
+                mkt = "SI"
+            tier = market_to_tier(mkt)
+            # resolve product name → internal SKU
+            prd_name  = str(r.get(name_col, "")).strip() if name_col else ""
+            prod_info = prod_by_ret_name.get(prd_name.lower(),
+                                             {"sku_id": prd_name, "sku_name": prd_name})
             units = to_float(r.get(units_col))
             rev   = to_float(r.get(rev_col))
             so_rows.append({
-                "week":           week,
-                "market":         info["market"],
-                "sku_id":         sid,
-                "sku_name":       str(r.get(name_col, "")).strip(),
-                "bottles_sold":   int(units),
-                "consumer_price": round(rev / units, 2) if units > 0 else 0,
+                "week":            week,
+                "market":          mkt,
+                "sku_id":          prod_info["sku_id"],
+                "sku_name":        prod_info["sku_name"],
+                "bottles_sold":    int(units),
+                "consumer_price":  round(rev / units, 2) if units > 0 and rev > 0 else 0,
                 "sellout_revenue": round(rev, 2),
-                "funnel_type":    f"{info['tier']}-tier",
+                "funnel_type":     f"{tier}-tier",
             })
     so_df = pd.DataFrame(so_rows) if so_rows else pd.DataFrame(
         columns=["week","market","sku_id","sku_name","bottles_sold","consumer_price","sellout_revenue","funnel_type"])
@@ -703,8 +717,51 @@ def load_excel(file):
                  "listing_fee","trade_disc","total_spend","roas","attributed_sales",
                  "influencer","reach","scope","window_days"])
 
-    # ── prim_df & stock_df: no primary sales sheet — return empty frames ───────
-    prim_df = pd.DataFrame(
+    # ── Primary Sales → prim_df ────────────────────────────────────────────────
+    prim_rows = []
+    if prim_raw is not None:
+        date_col_p  = next((c for c in prim_raw.columns if "Invoice Date" in c or "Date" in c), None)
+        mkt_col_p   = next((c for c in prim_raw.columns if "Market" in c), None)
+        sku_col_p   = next((c for c in prim_raw.columns if "Internal SKU Code" in c or "Internal SKU" in c), None)
+        name_col_p  = next((c for c in prim_raw.columns if "Product Name" in c), None)
+        cases_col   = next((c for c in prim_raw.columns if "Cases Sold" in c or "Cases" in c), None)
+        bpc_col     = next((c for c in prim_raw.columns if "Bottles per Case" in c), None)
+        gross_col   = next((c for c in prim_raw.columns if "Gross Revenue" in c), None)
+        disc_col    = next((c for c in prim_raw.columns if "Discount" in c and "%" not in c and "Campaign" not in c), None)
+        net_col     = next((c for c in prim_raw.columns if "Net Revenue" in c), None)
+        tier_col_p  = next((c for c in prim_raw.columns if "Tier" in c), None)
+        for _, r in prim_raw.iterrows():
+            if pd.isna(r.get(sku_col_p)):
+                continue
+            raw_date = r.get(date_col_p)
+            try:
+                dt   = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
+                week = dt - pd.Timedelta(days=dt.weekday())
+            except Exception:
+                week = pd.NaT
+            cases  = to_float(r.get(cases_col))
+            bpc    = to_float(r.get(bpc_col)) or 12
+            gross  = to_float(r.get(gross_col))
+            disc   = to_float(r.get(disc_col))
+            net    = to_float(r.get(net_col))
+            mkt    = str(r.get(mkt_col_p, "SI")).strip() if mkt_col_p else "SI"
+            tier   = int(to_float(r.get(tier_col_p)) or 3) if tier_col_p else 3
+            sku    = str(r.get(sku_col_p, "")).strip()
+            name   = str(r.get(name_col_p, sku)).strip() if name_col_p else sku
+            prim_rows.append({
+                "week":           week,
+                "market":         mkt,
+                "sku_id":         sku,
+                "sku_name":       name,
+                "cases":          cases,
+                "bottles":        cases * bpc,
+                "list_price":     round(gross / max(cases * bpc, 1), 4),
+                "gross_revenue":  gross,
+                "trade_discount": disc,
+                "net_revenue":    net if net > 0 else max(gross - disc, 0),
+                "funnel_type":    f"{tier}-tier",
+            })
+    prim_df = pd.DataFrame(prim_rows) if prim_rows else pd.DataFrame(
         columns=["week","market","sku_id","sku_name","cases","bottles",
                  "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
     stock_df = pd.DataFrame(
