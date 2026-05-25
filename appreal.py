@@ -11,6 +11,8 @@ import plotly.express as px
 import numpy as np
 from datetime import timedelta
 import warnings
+import os
+import pathlib
 warnings.filterwarnings("ignore")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1031,18 +1033,26 @@ mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","m
 stock_df = pd.DataFrame(columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 exp_df   = pd.DataFrame(columns=["product_line","sku","month","production_cost","logistics","marketing_promo"])
 
+# ── Auto-load from same folder first, then fall back to uploader ──────────
+_AUTO_PATH = pathlib.Path(__file__).parent / "Niamito_Master_Tables.xlsx"
+_data_source = None
 if uploaded is not None:
+    _data_source = uploaded
+elif _AUTO_PATH.exists():
+    _data_source = str(_AUTO_PATH)
+
+if _data_source is not None:
     try:
-        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df = load_excel(uploaded)
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df = load_excel(_data_source)
         demo_mode = False
-        st.sidebar.success("Data loaded")
-        # Show data freshness note
+        _src_label = "auto-loaded from folder" if uploaded is None else "uploaded"
+        st.sidebar.success(f"✅ Data {_src_label}")
         if not prim_df.empty and "week" in prim_df.columns:
             latest_prim = prim_df["week"].max()
             if pd.notna(latest_prim):
                 st.sidebar.caption(
-                    f"📦 Primary Sales data: up to {latest_prim.strftime('%b %Y')}. "
-                    "Add new invoices to the Excel to extend the timeline."
+                    f"📦 Primary Sales: up to {latest_prim.strftime('%b %Y')}. "
+                    "Replace the Excel file to update."
                 )
     except Exception as e:
         st.sidebar.error(f"Could not read file: {e}")
@@ -1226,26 +1236,29 @@ with tab1:
 
     with col_trend:
         if not prim_f.empty:
-            cat_weekly = prim_f.groupby(["week","category"]).agg(
+            _pf_mo = prim_f.copy()
+            _pf_mo["month"] = _pf_mo["week"].dt.to_period("M").astype(str)
+            cat_monthly = _pf_mo.groupby(["month","category"]).agg(
                 pieces=("bottles","sum"),
                 revenue=("gross_revenue","sum"),
-            ).reset_index()
+            ).reset_index().sort_values("month")
             y_col = "pieces" if metric_mode == "Pieces sold" else "revenue"
             y_label = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
             fig_sw = go.Figure()
             for cat in ALL_CATEGORIES:
-                d = cat_weekly[cat_weekly["category"] == cat]
+                d = cat_monthly[cat_monthly["category"] == cat]
                 if d.empty:
                     continue
                 color = CATEGORY_COLORS.get(cat, BROWN)
                 fig_sw.add_trace(go.Bar(
-                    x=d["week"], y=d[y_col],
+                    x=d["month"], y=d[y_col],
                     name=cat,
                     marker_color=color,
-                    hovertemplate=f"<b>{cat}</b><br>%{{x|%d %b}}: %{{y:,}}<extra></extra>",
+                    hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
                 ))
-            l_sw = base_layout(f"Weekly Sell-In by Category ({y_label})", height=300)
+            l_sw = base_layout(f"Monthly Sell-In by Category ({y_label})", height=300)
             l_sw["barmode"] = "stack"
+            l_sw["xaxis"]["tickangle"] = -30
             if metric_mode != "Pieces sold":
                 l_sw["yaxis"]["tickprefix"] = "\u20ac"
             fig_sw.update_layout(**l_sw)
@@ -1623,31 +1636,22 @@ with tab3:
 
     # ── Context banner ────────────────────────────────────────────────────────
     if not demo_mode:
-        _pmin = prim_df["week"].min() if not prim_df.empty else None
-        _pmax = prim_df["week"].max() if not prim_df.empty else None
-        _date_rng = (
-            f"{_pmin.strftime('%b %Y')} → {_pmax.strftime('%b %Y')}"
-            if _pmin is not None and pd.notna(_pmin) else "unknown"
-        )
-        _exp_note = (
-            f"{len(exp_df)} expense rows · {exp_df['product_line'].nunique()} product lines"
-            if not exp_df.empty else "no expense data loaded"
-        )
+        _exp_months = sorted(exp_df["month"].unique().tolist()) if not exp_df.empty else []
+        _exp_range  = f"{_exp_months[0]} – {_exp_months[-1]}" if len(_exp_months) >= 2 else (_exp_months[0] if _exp_months else "n/a")
         st.info(
-            f"**How this works** · "
-            f"**Revenue**: Primary Sales invoices ({_date_rng} — filtered to selected period & market). "
-            f"**Costs**: Expenses sheet ({_exp_note}, Jan–Apr 2026 — not period-filtered, covers 2026 only). "
-            f"**SKUs**: all products combined. "
-            f"**Trade discounts**: excluded (all zero in current data). "
-            f"Gross Margin = Revenue − Production − Logistics − Marketing & Promo."
+            f"📅 **Revenue**: 2026 primary invoices only · "
+            f"💰 **Costs**: Expenses {_exp_range} · "
+            f"📐 **Formula**: Gross Revenue − Production − Logistics − Mktg & Promo = Gross Margin"
         )
 
     wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
 
-    p_data = prim_f if wf_mkt == "ALL" else (
-        prim_f[prim_f["market"] == wf_mkt] if not prim_f.empty else prim_f)
+    # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
+    _prim_2026 = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
+    p_data = _prim_2026 if wf_mkt == "ALL" else (
+        _prim_2026[_prim_2026["market"] == wf_mkt] if not _prim_2026.empty else _prim_2026)
     m_data = mkt_f if wf_mkt == "ALL" else (
         mkt_f[mkt_f["market"].isin([wf_mkt, "ALL"])] if not mkt_f.empty else mkt_f)
 
@@ -1686,7 +1690,7 @@ with tab3:
         connector=dict(line=dict(color=MID, width=1, dash="dot")),
         increasing=dict(marker=dict(color=GREEN)),
         decreasing=dict(marker=dict(color=CORAL)),
-        totals=dict(marker=dict(color=BROWN)),
+        totals=dict(marker=dict(color=CORAL if gross_margin < 0 else GREEN)),
         hovertemplate="<b>%{x}</b><br>\u20ac%{y:,.0f}<extra></extra>",
     ))
     margin_pct = gross_margin / max(gross, 1) * 100
@@ -1890,25 +1894,32 @@ with tab4:
             fig_sku_p.update_layout(**l_sku_p)
             st.plotly_chart(fig_sku_p, use_container_width=True)
 
-        # Primary SKU trend
-        _trend_col_p = "bottles"
-        _trend_title_p = "Weekly Primary Sales by SKU — Pieces (all markets)"
-        sku_trend_p = prim_f_nokcat.groupby(["week", "sku_id"])["bottles"].sum().reset_index()
-        fig_tp = go.Figure()
-        for sku in sku_prim["sku_id"]:
-            d    = sku_trend_p[sku_trend_p["sku_id"] == sku]
-            name = sku_prim.loc[sku_prim["sku_id"] == sku, "sku_name"].iloc[0] if not sku_prim[sku_prim["sku_id"]==sku].empty else sku
-            clr  = CATEGORY_COLORS.get(get_product_category(name), BROWN)
-            fig_tp.add_trace(go.Scatter(
-                x=d["week"], y=d["bottles"],
-                mode="lines",
-                name=name,
-                line=dict(color=clr, width=2),
-                hovertemplate=f"<b>{name}</b><br>%{{x|%d %b}}: %{{y:,}} pieces<extra></extra>",
+        # Top SKUs — horizontal sorted bar (cleaner than spaghetti line chart)
+        _sku_rank = (
+            prim_f_nokcat.groupby("sku_id")["bottles"].sum()
+            .reset_index()
+            .merge(
+                prim_f_nokcat[["sku_id","sku_name"]].drop_duplicates("sku_id"),
+                on="sku_id", how="left"
+            )
+            .sort_values("bottles", ascending=True)  # ascending so largest is at top in horizontal bar
+        )
+        if not _sku_rank.empty:
+            _rank_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _sku_rank["sku_name"]]
+            fig_tp = go.Figure(go.Bar(
+                x=_sku_rank["bottles"],
+                y=_sku_rank["sku_name"],
+                orientation="h",
+                marker=dict(color=_rank_colors),
+                text=[f"{int(v):,}" for v in _sku_rank["bottles"]],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>%{x:,} pieces<extra></extra>",
             ))
-        layout_tp = base_layout(_trend_title_p, height=300)
-        fig_tp.update_layout(**layout_tp)
-        st.plotly_chart(fig_tp, use_container_width=True)
+            layout_tp = base_layout("SKU Ranking — Total Pieces (selected period)", height=max(300, len(_sku_rank) * 36))
+            layout_tp["xaxis"]["title"] = "Pieces"
+            layout_tp["margin"]["r"] = 20
+            fig_tp.update_layout(**layout_tp)
+            st.plotly_chart(fig_tp, use_container_width=True)
 
         # Primary SKU summary table
         st.markdown("<h2>Primary SKU Summary</h2>", unsafe_allow_html=True)
