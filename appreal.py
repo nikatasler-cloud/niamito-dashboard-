@@ -1005,6 +1005,14 @@ if uploaded is not None:
         prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df = load_excel(uploaded)
         demo_mode = False
         st.sidebar.success("Data loaded")
+        # Show data freshness note
+        if not prim_df.empty and "week" in prim_df.columns:
+            latest_prim = prim_df["week"].max()
+            if pd.notna(latest_prim):
+                st.sidebar.caption(
+                    f"📦 Primary Sales data: up to {latest_prim.strftime('%b %Y')}. "
+                    "Add new invoices to the Excel to extend the timeline."
+                )
     except Exception as e:
         st.sidebar.error(f"Could not read file: {e}")
 
@@ -1019,6 +1027,9 @@ if market_filter:
     stock_f = stock_df[stock_df["market"].isin(market_filter)]
 else:
     prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
+
+# Snapshot before category filter — used in SKU Performance to show all products
+prim_f_nokcat = prim_f.copy()
 
 # ── Apply category filter ─────────────────────────────
 if category_filter and len(category_filter) < len(ALL_CATEGORIES):
@@ -1066,10 +1077,9 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # ──────────────────────────────────────────────────────────────────────────────
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "Overview",
-    "Sales Funnel",
-    "Marketing ROI",
+    "Marketing",
     "Value Leakage",
     "SKU Performance",
 ])
@@ -1098,6 +1108,54 @@ with tab1:
     k4.metric("Blended ROAS",                 f"{blended_roas:.1f}\u00d7",
               delta="No ROAS data in real file" if not demo_mode and blended_roas == 0 else None)
 
+    st.markdown("")
+
+    # ── YTD Bottles cards (secondary sell-out) ────────────────
+    today_ts   = pd.Timestamp("today").normalize()
+    jan1_2026  = pd.Timestamp("2026-01-01")
+    jan1_2025  = pd.Timestamp("2025-01-01")
+    # Same calendar date in 2025
+    same_day_2025 = today_ts.replace(year=2025)
+
+    if not so_df.empty and "bottles_sold" in so_df.columns and "week" in so_df.columns:
+        ytd_2026 = int(so_df[
+            (so_df["week"] >= jan1_2026) & (so_df["week"] <= today_ts)
+        ]["bottles_sold"].sum())
+        ytd_2025 = int(so_df[
+            (so_df["week"] >= jan1_2025) & (so_df["week"] <= same_day_2025)
+        ]["bottles_sold"].sum())
+        yoy_delta = ytd_2026 - ytd_2025
+        yoy_pct   = f"{yoy_delta/max(ytd_2025,1)*100:+.1f}% vs same period 2025"
+
+        kytd1, kytd2, kytd3 = st.columns([1, 1, 2])
+        kytd1.metric(
+            "🛒 Retail Bottles YTD 2026",
+            f"{ytd_2026:,}",
+            delta=yoy_pct,
+        )
+        kytd2.metric(
+            "🛒 Retail Bottles YTD 2025",
+            f"{ytd_2025:,}",
+        )
+        # Mini sparkline of weekly retail units this year
+        with kytd3:
+            weekly_ytd = so_df[
+                (so_df["week"] >= jan1_2026) & (so_df["week"] <= today_ts)
+            ].groupby("week")["bottles_sold"].sum().reset_index()
+            if not weekly_ytd.empty:
+                fig_ytd = go.Figure(go.Scatter(
+                    x=weekly_ytd["week"], y=weekly_ytd["bottles_sold"],
+                    fill="tozeroy", mode="lines",
+                    line=dict(color=GREEN, width=2),
+                    fillcolor=hex_alpha(GREEN, 0.25),
+                ))
+                fig_ytd.update_layout(
+                    height=80, margin=dict(l=0,r=0,t=4,b=0),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                    xaxis=dict(visible=False), yaxis=dict(visible=False),
+                )
+                st.plotly_chart(fig_ytd, use_container_width=True)
     st.markdown("")
 
     # ── Primary sales trend by product category (stacked area) ───────────────
@@ -1200,268 +1258,234 @@ with tab1:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 · SALES FUNNEL
+# TAB 2 · MARKETING
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    total_spend_mkt   = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
+    n_campaigns       = len(mkt_f) if not mkt_f.empty else 0
+    top_channel       = (mkt_f.groupby("channel")["total_spend"].sum().idxmax()
+                         if not mkt_f.empty and mkt_f["total_spend"].sum() > 0 else "—")
+    n_influencers     = mkt_f["influencer"].notna().sum() if not mkt_f.empty and "influencer" in mkt_f.columns else 0
+    avg_cpm           = total_spend_mkt / max(
+        mkt_f["reach"].sum() if not mkt_f.empty and "reach" in mkt_f.columns else 0, 1
+    ) * 1000
 
-    st.markdown("<h2>Sales Funnel by Market</h2>", unsafe_allow_html=True)
-    st.markdown(
-        f"<p style='font-size:12px; color:{MID};'>"
-        "SI uses a <b>3-tier funnel</b> (Company → Distributor → Retailer → Consumer). "
-        "DE uses a <b>2-tier funnel</b> (Company → Retailer → Consumer).</p>",
-        unsafe_allow_html=True,
-    )
+    mk1, mk2, mk3, mk4, mk5 = st.columns(5)
+    mk1.metric("Total Marketing Spend", f"\u20ac{total_spend_mkt:,.0f}")
+    mk2.metric("Campaigns Tracked",     f"{n_campaigns}")
+    mk3.metric("Top Channel",           top_channel)
+    mk4.metric("Influencer Activations", f"{n_influencers}")
+    mk5.metric("Est. CPM",              f"\u20ac{avg_cpm:.2f}" if avg_cpm < 1000 else "—",
+               help="Cost per 1,000 estimated impressions (influencer reach only)")
 
-    available_markets = [m for m in ["SI", "HR", "DE"] if m in (market_filter or ["SI","HR","DE"])]
-    if not available_markets:
-        st.info("No markets selected.")
+    st.markdown("<hr style='margin:8px 0 16px'>", unsafe_allow_html=True)
+
+    if mkt_f.empty:
+        st.info("No marketing data available.")
     else:
-        sel_mkt = st.radio(
-            "Select market:",
-            options=available_markets,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
+        # ── Row 1: Spend by channel + Monthly spend trend ─────────────────────
+        col_ch, col_mo = st.columns(2)
 
-        prim_mkt = prim_f[prim_f["market"] == sel_mkt]
-        so_mkt   = so_f[so_f["market"] == sel_mkt] if not so_f.empty else pd.DataFrame()
-
-        p_rev  = prim_mkt["gross_revenue"].sum()
-        n_rev  = prim_mkt["net_revenue"].sum()
-        so_rev = so_mkt["sellout_revenue"].sum() if not so_mkt.empty else 0
-        so_units = so_mkt["bottles_sold"].sum() if not so_mkt.empty else 0
-        fill_rate = (so_units / max(prim_mkt["bottles"].sum(), 1) * 100) if not prim_mkt.empty else 0
-
-        funnel_type = "3-tier" if sel_mkt in ["SI", "HR"] else "2-tier"
-
-        fl, fm, fr = st.columns(3)
-        fl.metric("Primary Sales (Gross)", f"\u20ac{p_rev:,.0f}", help="Company invoices to distributor/retailer")
-        fm.metric("Net Revenue (after discounts)", f"\u20ac{n_rev:,.0f}", delta=f"No trade discounts in data")
-        fr.metric("Retail Units Sold", f"{so_units:,.0f}", delta=f"{fill_rate:.0f}% sell-through")
-
-        st.markdown("")
-
-        stages = ["Primary (Gross)", "Net Revenue", "Retail Sell-Out (units approx.)"]
-        values = [p_rev, n_rev, so_rev if so_rev > 0 else so_units * 4.0]
-        colors = [LAVEN, BROWN, GREEN]
-
-        fig_f = go.Figure(go.Funnel(
-            y=stages,
-            x=values,
-            textposition="inside",
-            texttemplate="\u20ac%{value:,.0f}  (%{percentInitial:.0%})",
-            marker=dict(color=colors, line=dict(color=CREAM, width=1.5)),
-            connector=dict(line=dict(color=BROWN, width=1)),
-        ))
-        layout_f = base_layout(f"{sel_mkt} — {'3-Tier' if funnel_type=='3-tier' else '2-Tier'} Funnel", height=320)
-        layout_f.pop("xaxis", None)
-        layout_f.pop("yaxis", None)
-        fig_f.update_layout(**layout_f)
-        st.plotly_chart(fig_f, use_container_width=True)
-
-        if sel_mkt in ["SI", "HR"]:
-            st.markdown("<h2>Distributor Stock Health</h2>", unsafe_allow_html=True)
-            stock_mkt = stock_f[stock_f["market"] == sel_mkt]
-
-            if not stock_mkt.empty:
-                c_s1, c_s2 = st.columns([0.65, 0.35])
-                with c_s1:
-                    fig_s = go.Figure()
-                    fig_s.add_trace(go.Scatter(
-                        x=stock_mkt["week"], y=stock_mkt["stock_cases"],
-                        fill="tozeroy", mode="lines",
-                        line=dict(color=LAVEN, width=2),
-                        fillcolor="rgba(179, 184, 217, 0.33)",
-                        name="Stock (cases)",
-                        hovertemplate="Week: %{x|%d %b}<br>Stock: %{y:,} cases<extra></extra>",
-                    ))
-                    layout_s = base_layout(f"{sel_mkt} Distributor Stock (cases)", height=280)
-                    fig_s.update_layout(**layout_s)
-                    st.plotly_chart(fig_s, use_container_width=True)
-
-                with c_s2:
-                    avg_s2s = stock_mkt["stock_to_sales"].mean()
-                    st.metric("Avg Stock-to-Sales Ratio", f"{avg_s2s:.1f}\u00d7",
-                              help="Cases in stock / cases shipped out.")
-                    current = stock_mkt.iloc[-1]["stock_to_sales"] if not stock_mkt.empty else 0
-                    flag = "Healthy" if current < 2.0 else "Overstock risk"
-                    st.markdown(f"<p style='font-size:13px;'>Latest week: <b>{current:.1f}\u00d7</b> — {flag}</p>",
-                                unsafe_allow_html=True)
-
-                    fig_io = go.Figure()
-                    fig_io.add_trace(go.Bar(x=stock_mkt["week"], y=stock_mkt["cases_in"],
-                                            name="In", marker_color=GREEN, opacity=0.8))
-                    fig_io.add_trace(go.Bar(x=stock_mkt["week"], y=stock_mkt["cases_out"],
-                                            name="Out", marker_color=CORAL, opacity=0.8))
-                    layout_io = base_layout("Cases In vs Out", height=230)
-                    layout_io["margin"]["t"] = 30
-                    layout_io["barmode"] = "group"
-                    fig_io.update_layout(**layout_io)
-                    st.plotly_chart(fig_io, use_container_width=True)
-            else:
-                st.info("No stock data available for this market.")
-        else:
-            st.info("Germany uses a 2-tier funnel — no distributor stock to track. Products ship directly from Niamito to retailers.")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 · MARKETING ROI
-# ══════════════════════════════════════════════════════════════════════════════
-with tab3:
-
-    # ── Attribution scope legend ──────────────────────────
-    st.markdown(f"""
-    <div style='display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;'>
-      <div style='background:{LAVEN}33; border:1.5px solid {LAVEN}; border-radius:10px;
-                  padding:10px 16px; font-size:12px; flex:1; min-width:200px;'>
-        <b style='color:{BROWN};'>Market-level attribution</b><br>
-        <span style='color:{MID};'>Digital, Events, Traditional — lift measured across the whole market
-        for the window after the campaign ends.</span>
-      </div>
-      <div style='background:{GREEN}33; border:1.5px solid {GREEN}; border-radius:10px;
-                  padding:10px 16px; font-size:12px; flex:1; min-width:200px;'>
-        <b style='color:{BROWN};'>Store-level attribution</b><br>
-        <span style='color:{MID};'>Team, Production — tag specific store rows
-        in the Sell-out Template with the Campaign ID during the exact promo dates.</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── Spend by channel type ─────────────────────────────
-    st.markdown("<h2>Spend by Channel Type</h2>", unsafe_allow_html=True)
-
-    col_ct, col_tm = st.columns(2)
-
-    with col_ct:
-        if not mkt_f.empty:
-            ch_type_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
-            ch_type_spend = ch_type_spend[ch_type_spend["total_spend"] > 0].sort_values("total_spend", ascending=True)
-            palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
-            fig_ct = go.Figure(go.Bar(
-                x=ch_type_spend["total_spend"],
-                y=ch_type_spend["channel"],
+        with col_ch:
+            ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
+            ch_spend = ch_spend[ch_spend["total_spend"] > 0].sort_values("total_spend", ascending=True)
+            ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
+            fig_ch = go.Figure(go.Bar(
+                x=ch_spend["total_spend"],
+                y=ch_spend["channel"],
                 orientation="h",
-                marker=dict(color=palette[:len(ch_type_spend)]),
-                text=[f"\u20ac{v:,.0f}" for v in ch_type_spend["total_spend"]],
+                marker=dict(color=ch_palette[:len(ch_spend)],
+                            line=dict(color=CREAM, width=1)),
+                text=[f"\u20ac{v:,.0f}" for v in ch_spend["total_spend"]],
                 textposition="outside",
                 hovertemplate="<b>%{y}</b><br>\u20ac%{x:,.0f}<extra></extra>",
             ))
-            l_ct = base_layout("Spend by Channel Type", height=max(260, len(ch_type_spend) * 48 + 80))
-            l_ct["xaxis"]["tickprefix"] = "\u20ac"
-            l_ct["margin"]["l"] = 120
-            fig_ct.update_layout(**l_ct)
-            st.plotly_chart(fig_ct, use_container_width=True)
-        else:
-            st.info("No marketing data available.")
+            l_ch = base_layout("Spend by Channel", height=300)
+            l_ch["xaxis"]["tickprefix"] = "\u20ac"
+            l_ch["margin"]["l"] = 130
+            fig_ch.update_layout(**l_ch)
+            st.plotly_chart(fig_ch, use_container_width=True)
 
-    with col_tm:
-        if not mkt_f.empty and "start" in mkt_f.columns:
+        with col_mo:
             mkt_f2 = mkt_f.copy()
-            mkt_f2["month"] = pd.to_datetime(mkt_f2["start"], errors="coerce").dt.to_period("M").astype(str)
-            monthly_spend = mkt_f2.groupby("month")["total_spend"].sum().reset_index()
-            monthly_spend = monthly_spend[monthly_spend["month"].notna()].sort_values("month")
-            fig_tm = go.Figure(go.Bar(
-                x=monthly_spend["month"],
-                y=monthly_spend["total_spend"],
-                marker_color=LAVEN,
-                text=[f"\u20ac{v:,.0f}" for v in monthly_spend["total_spend"]],
-                textposition="outside",
-                hovertemplate="<b>%{x}</b><br>\u20ac%{y:,.0f}<extra></extra>",
+            mkt_f2["month_dt"] = pd.to_datetime(mkt_f2["start"], errors="coerce").dt.to_period("M")
+            monthly = mkt_f2.groupby(["month_dt","channel"])["total_spend"].sum().reset_index()
+            monthly["month_str"] = monthly["month_dt"].astype(str)
+            monthly = monthly.sort_values("month_str")
+
+            fig_mo = go.Figure()
+            for idx, ch in enumerate(monthly["channel"].unique()):
+                d = monthly[monthly["channel"] == ch]
+                fig_mo.add_trace(go.Bar(
+                    x=d["month_str"], y=d["total_spend"],
+                    name=ch,
+                    marker_color=ch_palette[idx % len(ch_palette)],
+                    hovertemplate=f"<b>{ch}</b><br>%{{x}}<br>\u20ac%{{y:,.0f}}<extra></extra>",
+                ))
+            l_mo = base_layout("Monthly Spend by Channel", height=300)
+            l_mo["barmode"] = "stack"
+            l_mo["yaxis"]["tickprefix"] = "\u20ac"
+            l_mo["xaxis"]["tickangle"] = -30
+            fig_mo.update_layout(**l_mo)
+            st.plotly_chart(fig_mo, use_container_width=True)
+
+        # ── Row 2: Channel mix donut + Campaign count heatmap ─────────────────
+        col_donut, col_heat = st.columns(2)
+
+        with col_donut:
+            fig_donut = go.Figure(go.Pie(
+                labels=ch_spend["channel"],
+                values=ch_spend["total_spend"],
+                hole=0.55,
+                marker=dict(colors=ch_palette[:len(ch_spend)],
+                            line=dict(color=CREAM, width=2)),
+                textinfo="percent+label",
+                hovertemplate="<b>%{label}</b><br>\u20ac%{value:,.0f}  (%{percent})<extra></extra>",
             ))
-            l_tm = base_layout("Spend Over Time (by month)", height=max(260, len(ch_type_spend) * 48 + 80) if not mkt_f.empty else 260)
-            l_tm["yaxis"]["tickprefix"] = "\u20ac"
-            fig_tm.update_layout(**l_tm)
-            st.plotly_chart(fig_tm, use_container_width=True)
+            l_donut = base_layout("Spend Mix", height=300, legend_below=False)
+            l_donut["showlegend"] = False
+            fig_donut.update_layout(**l_donut)
+            st.plotly_chart(fig_donut, use_container_width=True)
 
-    st.info("ROAS data is not available in the marketing calendar. Campaigns are shown by spend only.")
+        with col_heat:
+            # Campaign count heatmap: month × channel
+            mkt_f3 = mkt_f.copy()
+            mkt_f3["month_str"] = pd.to_datetime(mkt_f3["start"], errors="coerce").dt.to_period("M").astype(str)
+            heat_data = mkt_f3.groupby(["channel","month_str"]).size().unstack(fill_value=0)
+            heat_data = heat_data.sort_index()
+            if not heat_data.empty:
+                fig_heat = go.Figure(go.Heatmap(
+                    z=heat_data.values,
+                    x=heat_data.columns.tolist(),
+                    y=heat_data.index.tolist(),
+                    colorscale=[[0, CREAM], [0.3, LAVEN], [1.0, BROWN]],
+                    text=[[str(v) if v > 0 else "" for v in row] for row in heat_data.values],
+                    texttemplate="%{text}",
+                    hovertemplate="<b>%{y}</b><br>%{x}: %{z} campaigns<extra></extra>",
+                    showscale=False,
+                ))
+                l_heat = base_layout("Campaign Activity (count by month)", height=300)
+                l_heat.pop("xaxis", None)
+                l_heat.pop("yaxis", None)
+                l_heat["margin"]["l"] = 130
+                l_heat["margin"]["b"] = 60
+                fig_heat.update_layout(**l_heat)
+                st.plotly_chart(fig_heat, use_container_width=True)
 
-    # ── Influencer cards ──────────────────────────────────
-    if not mkt_f.empty and "influencer" in mkt_f.columns:
-        inf_df = mkt_f[mkt_f["influencer"].notna()].copy()
-        if not inf_df.empty:
-            st.markdown("<h2>Influencer Tracker</h2>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:11px;color:{MID};margin-top:-8px;'>Market-level · ROAS measurement pending sell-out data linkage</p>", unsafe_allow_html=True)
-            max_cols = min(len(inf_df), 4)
-            rows_needed = (len(inf_df) + max_cols - 1) // max_cols
-            for row_i in range(rows_needed):
-                row_data = inf_df.iloc[row_i*max_cols:(row_i+1)*max_cols]
-                cols_inf = st.columns(len(row_data))
-                for i, (_, row) in enumerate(row_data.iterrows()):
-                    with cols_inf[i]:
-                        reach    = row.get("reach") or 0
-                        cpm      = round(row["media_spend"] / max(reach, 1) * 1000, 2) if reach else 0
-                        roas_val = row.get("roas")
-                        roas_str = f"{roas_val:.1f}\u00d7" if pd.notna(roas_val) else "pending"
-                        roas_col = GREEN if (pd.notna(roas_val) and roas_val >= 2) else (YELLOW if pd.notna(roas_val) else MID)
-                        reach_str = f"{int(reach):,}" if reach else "—"
-                        st.markdown(f"""
-                        <div style='background:{CREAM}; border:1.5px solid {LAVEN}; border-radius:12px; padding:14px; margin-bottom:8px;'>
-                            <p style='font-size:13px; font-weight:700; margin:0; color:{BROWN};'>{row["influencer"]}</p>
-                            <p style='font-size:10px; color:{MID}; margin:2px 0 8px; text-transform:uppercase; letter-spacing:0.5px;'>{row["market"]} · Market-level</p>
-                            <p style='margin:3px 0; font-size:12px;'>Reach: <b>{reach_str}</b></p>
-                            <p style='margin:3px 0; font-size:12px;'>Spend: <b>\u20ac{row["media_spend"]:,.0f}</b></p>
-                            <p style='margin:3px 0; font-size:12px;'>ROAS: <b style='color:{roas_col};'>{roas_str}</b></p>
-                            <p style='margin:3px 0; font-size:12px;'>CPM: <b>\u20ac{cpm:.2f}</b></p>
-                            <p style='margin:3px 0; font-size:11px; color:{MID};'>{row["start"]} — {row["end"]}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+        # ── Influencer tracker ────────────────────────────────────────────────
+        if "influencer" in mkt_f.columns:
+            inf_df = mkt_f[mkt_f["influencer"].notna()].copy()
+            if not inf_df.empty:
+                st.markdown("<h2>Influencer Activations</h2>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<p style='font-size:11px;color:{MID};margin-top:-8px;'>"
+                    f"{len(inf_df)} activations · ROAS pending sell-out linkage</p>",
+                    unsafe_allow_html=True,
+                )
+                max_cols = min(len(inf_df), 4)
+                rows_needed = (len(inf_df) + max_cols - 1) // max_cols
+                for row_i in range(rows_needed):
+                    row_data = inf_df.iloc[row_i*max_cols:(row_i+1)*max_cols]
+                    cols_inf = st.columns(len(row_data))
+                    for i, (_, row) in enumerate(row_data.iterrows()):
+                        with cols_inf[i]:
+                            reach    = row.get("reach") or 0
+                            cpm      = round(row["media_spend"] / max(reach, 1) * 1000, 2) if reach else 0
+                            roas_val = row.get("roas")
+                            roas_str = f"{roas_val:.1f}\u00d7" if pd.notna(roas_val) else "pending"
+                            roas_col = GREEN if (pd.notna(roas_val) and roas_val >= 2) else (YELLOW if pd.notna(roas_val) else MID)
+                            reach_str = f"{int(reach):,}" if reach else "—"
+                            spend = row["media_spend"]
+                            # Colour band based on spend size
+                            border_col = BROWN if spend > 500 else LAVEN
+                            st.markdown(f"""
+                            <div style='background:{CREAM}; border-left:4px solid {border_col};
+                                        border-radius:10px; padding:12px 14px; margin-bottom:8px;
+                                        box-shadow:0 1px 4px rgba(0,0,0,0.07);'>
+                                <p style='font-size:13px; font-weight:700; margin:0 0 2px; color:{BROWN};'>
+                                    {row["influencer"]}</p>
+                                <p style='font-size:10px; color:{MID}; margin:0 0 8px;
+                                   text-transform:uppercase; letter-spacing:0.5px;'>
+                                   {row["market"]} · {row.get("channel","—")}</p>
+                                <div style='display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; font-size:12px;'>
+                                  <span>👁 Reach</span><b>{reach_str}</b>
+                                  <span>💶 Spend</span><b>\u20ac{spend:,.0f}</b>
+                                  <span>📈 ROAS</span><b style='color:{roas_col}'>{roas_str}</b>
+                                  <span>📊 CPM</span><b>\u20ac{cpm:.2f}</b>
+                                </div>
+                                <p style='margin:8px 0 0; font-size:10px; color:{MID};'>
+                                   {row["start"]} → {row["end"]}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
 
-    # ── Full campaign table ───────────────────────────────
-    st.markdown("<h2>All Campaigns</h2>", unsafe_allow_html=True)
+        # ── Campaign timeline (Gantt-style) ───────────────────────────────────
+        st.markdown("<h2>Campaign Timeline</h2>", unsafe_allow_html=True)
 
-    if not mkt_f.empty:
-        def _scope_label(row):
-            if "scope" in row and pd.notna(row.get("scope")):
-                return "Market" if row["scope"] == "Market" else "Store"
-            ch = str(row.get("channel","")).lower()
-            return "Market" if any(k in ch for k in ["digital","event","traditional"]) else "Store"
+        mkt_gant = mkt_f.copy()
+        mkt_gant["start_dt"] = pd.to_datetime(mkt_gant["start"], errors="coerce")
+        mkt_gant["end_dt"]   = pd.to_datetime(mkt_gant["end"],   errors="coerce")
+        mkt_gant = mkt_gant.dropna(subset=["start_dt","end_dt"])
 
-        tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas","attributed_sales"] if c in mkt_f.columns]
+        if not mkt_gant.empty:
+            # Group by channel and show one bar per campaign coloured by channel
+            ch_color_map = dict(zip(
+                mkt_gant["channel"].unique(),
+                ch_palette[:mkt_gant["channel"].nunique()]
+            ))
+            # Aggregate monthly campaign counts per channel for a simple bar Gantt substitute
+            mkt_gant["month_str"] = mkt_gant["start_dt"].dt.to_period("M").astype(str)
+            gantt_monthly = (mkt_gant.groupby(["month_str","channel"])
+                             .agg(count=("name","count"), spend=("total_spend","sum"))
+                             .reset_index().sort_values("month_str"))
+
+            fig_gantt = go.Figure()
+            for ch in gantt_monthly["channel"].unique():
+                d = gantt_monthly[gantt_monthly["channel"] == ch]
+                fig_gantt.add_trace(go.Scatter(
+                    x=d["month_str"],
+                    y=d["spend"],
+                    mode="lines+markers",
+                    name=ch,
+                    line=dict(color=ch_color_map.get(ch, BROWN), width=2),
+                    marker=dict(size=d["count"]*3, sizemode="diameter",
+                                color=ch_color_map.get(ch, BROWN)),
+                    hovertemplate=(f"<b>{ch}</b><br>%{{x}}<br>"
+                                   "Campaigns: %{marker.size:.0f}<br>"
+                                   "Spend: \u20ac%{y:,.0f}<extra></extra>"),
+                ))
+            l_gantt = base_layout("Monthly Spend Pulse by Channel (bubble = # campaigns)", height=320)
+            l_gantt["yaxis"]["tickprefix"] = "\u20ac"
+            l_gantt["xaxis"]["tickangle"] = -30
+            fig_gantt.update_layout(**l_gantt)
+            st.plotly_chart(fig_gantt, use_container_width=True)
+
+        # ── All campaigns table ───────────────────────────────────────────────
+        st.markdown("<h2>All Campaigns</h2>", unsafe_allow_html=True)
+        tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas"] if c in mkt_f.columns]
         tbl = mkt_f[tbl_cols].copy()
-        tbl["Attribution"] = mkt_f.apply(_scope_label, axis=1)
         rename_map = {
             "id": "ID", "name": "Campaign", "channel": "Channel",
             "market": "Mkt", "start": "Start", "end": "End",
             "total_spend": "Spend (\u20ac)", "roas": "ROAS",
-            "attributed_sales": "Attributed Sales (\u20ac)"
         }
         tbl = tbl.rename(columns=rename_map)
         if "Spend (\u20ac)" in tbl.columns:
             tbl["Spend (\u20ac)"] = tbl["Spend (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-        if "Attributed Sales (\u20ac)" in tbl.columns:
-            tbl["Attributed Sales (\u20ac)"] = tbl["Attributed Sales (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}" if x else "—")
         if "ROAS" in tbl.columns:
             tbl["ROAS"] = tbl["ROAS"].apply(lambda x: f"{x:.1f}\u00d7" if pd.notna(x) else "—")
-        st.dataframe(tbl.sort_values("Attribution") if "Attribution" in tbl.columns else tbl,
-                     use_container_width=True, hide_index=True)
-
-    # ── Spend by market ───────────────────────────────────
-    if not mkt_f.empty:
-        st.markdown("<h2>Spend by Market</h2>", unsafe_allow_html=True)
-        mkt_spend = mkt_f.groupby("market")["total_spend"].sum().reset_index()
-        fig_mkt = go.Figure(go.Bar(
-            x=mkt_spend["market"], y=mkt_spend["total_spend"],
-            marker=dict(color=[MARKET_COLORS.get(m, BROWN) for m in mkt_spend["market"]]),
-            text=[f"\u20ac{v:,.0f}" for v in mkt_spend["total_spend"]],
-            textposition="outside",
-            hovertemplate="<b>%{x}</b><br>\u20ac%{y:,.0f}<extra></extra>",
-        ))
-        l_mkt = base_layout("Spend by Market", height=300)
-        l_mkt["yaxis"]["tickprefix"] = "\u20ac"
-        fig_mkt.update_layout(**l_mkt)
-        st.plotly_chart(fig_mkt, use_container_width=True)
+        st.dataframe(tbl, use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 · VALUE LEAKAGE WATERFALL
+# TAB 3 · VALUE LEAKAGE WATERFALL
 # ══════════════════════════════════════════════════════════════════════════════
-with tab4:
-
-    st.markdown("<h2>Value Leakage — Where Revenue Goes</h2>", unsafe_allow_html=True)
+with tab3:
+    st.markdown("<h2>Value Leakage — Revenue to Gross Margin</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px; color:{MID};'>"
-        "Starting from gross sales, each deduction shows what is taken off before Niamito's net revenue. "
-        "The smaller the leakage, the more efficient the go-to-market.</p>",
+        "Gross revenue minus costs gives the gross margin. "
+        "Each bar below shows how much of the top line survives after each deduction.</p>",
         unsafe_allow_html=True,
     )
 
@@ -1469,24 +1493,34 @@ with tab4:
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
 
-    if wf_mkt == "ALL":
-        p_data = prim_f
-        m_data = mkt_f
+    p_data = prim_f if wf_mkt == "ALL" else (
+        prim_f[prim_f["market"] == wf_mkt] if not prim_f.empty else prim_f)
+    m_data = mkt_f if wf_mkt == "ALL" else (
+        mkt_f[mkt_f["market"].isin([wf_mkt, "ALL"])] if not mkt_f.empty else mkt_f)
+
+    gross      = p_data["gross_revenue"].sum() if not p_data.empty else 0
+    trade_disc = p_data["trade_discount"].sum() if not p_data.empty else 0
+    mkt_spend  = m_data["total_spend"].sum() if not m_data.empty else 0
+
+    # Pull expense totals
+    prod_cost = exp_df["production_cost"].sum() if not exp_df.empty else 0
+    logistics = exp_df["logistics"].sum()        if not exp_df.empty else 0
+    mktg_promo= exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
+    total_exp = prod_cost + logistics + mktg_promo
+
+    # Net = gross minus all deductions
+    gross_margin = gross - prod_cost - logistics - mktg_promo - trade_disc
+
+    # ── Waterfall ─────────────────────────────────────────────────────────────
+    if total_exp > 0:
+        wf_labels  = ["Gross Revenue", "Production Cost", "Logistics", "Mktg & Promo", "Trade Discounts", "Gross Margin"]
+        wf_measure = ["absolute",       "relative",        "relative",  "relative",      "relative",        "total"]
+        wf_values  = [gross,            -prod_cost,        -logistics,  -mktg_promo,     -trade_disc,       gross_margin]
     else:
-        p_data = prim_f[prim_f["market"] == wf_mkt] if not prim_f.empty else prim_f
-        m_data = mkt_f[mkt_f["market"].isin([wf_mkt, "ALL"])] if not mkt_f.empty else mkt_f
-
-    gross       = p_data["gross_revenue"].sum() if not p_data.empty else 0
-    trade_disc  = p_data["trade_discount"].sum() if not p_data.empty else 0
-    after_trade = gross - trade_disc
-    mkt_spend   = m_data["media_spend"].sum() if not m_data.empty else 0
-    after_mkt   = after_trade - mkt_spend
-    listing_fees = m_data["listing_fee"].sum() if not m_data.empty else 0
-    net_revenue  = after_mkt - listing_fees
-
-    wf_labels  = ["Gross Revenue", "Trade Discounts", "Marketing Spend", "Listing Fees", "Net Revenue"]
-    wf_measure = ["absolute", "relative", "relative", "relative", "total"]
-    wf_values  = [gross, -trade_disc, -mkt_spend, -listing_fees, net_revenue]
+        wf_labels  = ["Gross Revenue", "Trade Discounts", "Marketing Spend", "Gross Margin"]
+        wf_measure = ["absolute",       "relative",        "relative",        "total"]
+        wf_values  = [gross,            -trade_disc,       -mkt_spend,        gross - trade_disc - mkt_spend]
+        gross_margin = gross - trade_disc - mkt_spend
 
     fig_wf = go.Figure(go.Waterfall(
         name="Value Leakage",
@@ -1502,22 +1536,116 @@ with tab4:
         totals=dict(marker=dict(color=BROWN)),
         hovertemplate="<b>%{x}</b><br>\u20ac%{y:,.0f}<extra></extra>",
     ))
+    margin_pct = gross_margin / max(gross, 1) * 100
     layout_wf = base_layout(
-        f"Value Leakage Waterfall — {wf_mkt}  "
-        f"(Net margin: {net_revenue/max(gross,1)*100:.1f}%)",
-        height=380,
+        f"P&L Waterfall — {wf_mkt}  (Gross Margin: {margin_pct:.1f}%)",
+        height=400,
     )
     layout_wf["yaxis"]["tickprefix"] = "\u20ac"
     fig_wf.update_layout(**layout_wf)
     st.plotly_chart(fig_wf, use_container_width=True)
 
+    # ── Summary table ─────────────────────────────────────────────────────────
     wf_tbl = pd.DataFrame({
         "Line": wf_labels,
         "Amount (\u20ac)": [f"\u20ac{abs(v):,.0f}" for v in wf_values],
-        "% of Gross": [f"{abs(v)/max(gross,1)*100:.1f}%" for v in wf_values],
+        "% of Gross":  [f"{abs(v)/max(gross,1)*100:.1f}%" for v in wf_values],
+        "Cumulative (\u20ac)": [
+            f"\u20ac{(gross + sum(wf_values[1:i+1])):,.0f}" if i > 0 else f"\u20ac{gross:,.0f}"
+            for i in range(len(wf_values))
+        ],
     })
     st.dataframe(wf_tbl, use_container_width=True, hide_index=True)
 
+    # ── Monthly P&L timeline (only if Expenses data exists) ───────────────────
+    if not exp_df.empty:
+        st.markdown("<h2>Monthly Cost vs Revenue Timeline</h2>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='font-size:12px; color:{MID};'>"
+            "Stacked cost bars vs primary revenue. Shows where costs are heaviest relative to revenue.</p>",
+            unsafe_allow_html=True,
+        )
+
+        MONTH_ORDER = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+        cost_monthly = exp_df.groupby("month").agg(
+            production_cost=("production_cost","sum"),
+            logistics=("logistics","sum"),
+            marketing_promo=("marketing_promo","sum"),
+        ).reset_index()
+        # Sort months correctly
+        cost_monthly["month_idx"] = cost_monthly["month"].apply(
+            lambda m: MONTH_ORDER.index(m[:3]) if m[:3] in MONTH_ORDER else 99
+        )
+        cost_monthly = cost_monthly.sort_values("month_idx")
+        cost_monthly["total_cost"] = (
+            cost_monthly["production_cost"] + cost_monthly["logistics"] + cost_monthly["marketing_promo"]
+        )
+
+        fig_pnl = go.Figure()
+        fig_pnl.add_trace(go.Bar(
+            x=cost_monthly["month"], y=cost_monthly["production_cost"],
+            name="Production", marker_color=BROWN, opacity=0.85,
+            hovertemplate="Production: \u20ac%{y:,.0f}<extra></extra>",
+        ))
+        fig_pnl.add_trace(go.Bar(
+            x=cost_monthly["month"], y=cost_monthly["logistics"],
+            name="Logistics", marker_color=LAVEN, opacity=0.85,
+            hovertemplate="Logistics: \u20ac%{y:,.0f}<extra></extra>",
+        ))
+        fig_pnl.add_trace(go.Bar(
+            x=cost_monthly["month"], y=cost_monthly["marketing_promo"],
+            name="Mktg & Promo", marker_color=GREEN, opacity=0.85,
+            hovertemplate="Mktg & Promo: \u20ac%{y:,.0f}<extra></extra>",
+        ))
+        fig_pnl.add_trace(go.Scatter(
+            x=cost_monthly["month"], y=cost_monthly["total_cost"],
+            name="Total Cost", mode="lines+markers",
+            line=dict(color=CORAL, width=2, dash="dot"),
+            marker=dict(size=7, color=CORAL),
+            hovertemplate="Total Cost: \u20ac%{y:,.0f}<extra></extra>",
+        ))
+        l_pnl = base_layout("Monthly Cost Breakdown (Expenses sheet)", height=360)
+        l_pnl["barmode"] = "stack"
+        l_pnl["yaxis"]["tickprefix"] = "\u20ac"
+        fig_pnl.update_layout(**l_pnl)
+        st.plotly_chart(fig_pnl, use_container_width=True)
+
+        # Cost by product line
+        st.markdown("<h2>Cost Structure by Product Line</h2>", unsafe_allow_html=True)
+        cost_by_line = exp_df.groupby("product_line").agg(
+            production_cost=("production_cost","sum"),
+            logistics=("logistics","sum"),
+            marketing_promo=("marketing_promo","sum"),
+        ).reset_index()
+        cost_by_line["total_cost"] = (
+            cost_by_line["production_cost"] + cost_by_line["logistics"] + cost_by_line["marketing_promo"]
+        )
+
+        fig_pl = go.Figure()
+        fig_pl.add_trace(go.Bar(x=cost_by_line["product_line"], y=cost_by_line["production_cost"],
+                                name="Production", marker_color=BROWN,
+                                hovertemplate="<b>%{x}</b><br>Production: \u20ac%{y:,.0f}<extra></extra>"))
+        fig_pl.add_trace(go.Bar(x=cost_by_line["product_line"], y=cost_by_line["logistics"],
+                                name="Logistics", marker_color=LAVEN,
+                                hovertemplate="<b>%{x}</b><br>Logistics: \u20ac%{y:,.0f}<extra></extra>"))
+        fig_pl.add_trace(go.Bar(x=cost_by_line["product_line"], y=cost_by_line["marketing_promo"],
+                                name="Mktg & Promo", marker_color=GREEN,
+                                hovertemplate="<b>%{x}</b><br>Mktg & Promo: \u20ac%{y:,.0f}<extra></extra>"))
+        l_pl = base_layout("Cost by Product Line", height=340)
+        l_pl["barmode"] = "group"
+        l_pl["yaxis"]["tickprefix"] = "\u20ac"
+        fig_pl.update_layout(**l_pl)
+        st.plotly_chart(fig_pl, use_container_width=True)
+
+        st.dataframe(cost_by_line.rename(columns={
+            "product_line":"Product Line",
+            "production_cost":"Production (\u20ac)",
+            "logistics":"Logistics (\u20ac)",
+            "marketing_promo":"Mktg & Promo (\u20ac)",
+            "total_cost":"Total Cost (\u20ac)",
+        }), use_container_width=True, hide_index=True)
+
+    # ── Net Margin by Market table ────────────────────────────────────────────
     st.markdown("<h2>Net Margin by Market</h2>", unsafe_allow_html=True)
     margin_rows = []
     for mkt in ["SI", "HR", "DE"]:
@@ -1527,93 +1655,38 @@ with tab4:
         md_ = mkt_f[mkt_f["market"].isin([mkt, "ALL"])] if not mkt_f.empty else pd.DataFrame()
         g   = pd_["gross_revenue"].sum() if not pd_.empty else 0
         td  = pd_["trade_discount"].sum() if not pd_.empty else 0
-        ms  = md_["media_spend"].sum() if not md_.empty else 0
-        lf  = md_["listing_fee"].sum() if not md_.empty else 0
-        nr  = g - td - ms - lf
+        ms  = md_["total_spend"].sum() if not md_.empty else 0
+        nr  = g - td - ms
         margin_rows.append({
-            "Market": mkt, "Gross (\u20ac)": g, "Trade Disc (\u20ac)": td,
-            "Mktg Spend (\u20ac)": ms, "Listing Fees (\u20ac)": lf,
-            "Net Revenue (\u20ac)": nr, "Net Margin %": f"{nr/max(g,1)*100:.1f}%",
+            "Market":        mkt,
+            "Gross (\u20ac)":     g,
+            "Trade Disc (\u20ac)":td,
+            "Mktg Spend (\u20ac)":ms,
+            "Net Rev (\u20ac)":   nr,
+            "Net Margin %":  f"{nr/max(g,1)*100:.1f}%",
         })
-
     if margin_rows:
         margin_df = pd.DataFrame(margin_rows)
-        for col in ["Gross (\u20ac)", "Trade Disc (\u20ac)", "Mktg Spend (\u20ac)", "Listing Fees (\u20ac)", "Net Revenue (\u20ac)"]:
+        for col in ["Gross (\u20ac)","Trade Disc (\u20ac)","Mktg Spend (\u20ac)","Net Rev (\u20ac)"]:
             margin_df[col] = margin_df[col].apply(lambda x: f"\u20ac{x:,.0f}")
         st.dataframe(margin_df, use_container_width=True, hide_index=True)
 
-    # ── Cost Structure from Expenses ──────────────────────
-    if not exp_df.empty:
-        st.markdown("<h2>Cost Structure by Product Line</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size:12px; color:{MID};'>Based on expense data (Jan–Apr 2026)</p>",
-                    unsafe_allow_html=True)
-
-        cost_by_line = exp_df.groupby("product_line").agg(
-            production_cost=("production_cost", "sum"),
-            logistics=("logistics", "sum"),
-            marketing_promo=("marketing_promo", "sum"),
-        ).reset_index()
-
-        fig_cost = go.Figure()
-        fig_cost.add_trace(go.Bar(
-            x=cost_by_line["product_line"], y=cost_by_line["production_cost"],
-            name="Production", marker_color=BROWN,
-            hovertemplate="<b>%{x}</b><br>Production: \u20ac%{y:,.0f}<extra></extra>",
-        ))
-        fig_cost.add_trace(go.Bar(
-            x=cost_by_line["product_line"], y=cost_by_line["logistics"],
-            name="Logistics", marker_color=LAVEN,
-            hovertemplate="<b>%{x}</b><br>Logistics: \u20ac%{y:,.0f}<extra></extra>",
-        ))
-        fig_cost.add_trace(go.Bar(
-            x=cost_by_line["product_line"], y=cost_by_line["marketing_promo"],
-            name="Marketing & Promo", marker_color=GREEN,
-            hovertemplate="<b>%{x}</b><br>Mktg & Promo: \u20ac%{y:,.0f}<extra></extra>",
-        ))
-        l_cost = base_layout("Cost Structure by Product Line", height=340)
-        l_cost["barmode"] = "group"
-        l_cost["yaxis"]["tickprefix"] = "\u20ac"
-        fig_cost.update_layout(**l_cost)
-        st.plotly_chart(fig_cost, use_container_width=True)
-
-        # Cost vs Revenue table
-        if not prim_f.empty and "category" in prim_f.columns:
-            rev_by_cat = prim_f.groupby("category")["gross_revenue"].sum().reset_index()
-            rev_by_cat.columns = ["product_line_cat", "gross_revenue"]
-
-            pl_map = {
-                "Niamito Fresh Meal":       "Niamito Fresh Meal",
-                "Niamito Oatmeal":          "Niamito Oatmeal",
-                "Niamito Meal in a Bottle": "Niamito UHT Meal",
-            }
-            cost_by_line["category"] = cost_by_line["product_line"].apply(
-                lambda x: next((k for k, v in pl_map.items() if v in x or k in x), x)
-            )
-            cost_by_line["total_cost"] = (
-                cost_by_line["production_cost"] + cost_by_line["logistics"] + cost_by_line["marketing_promo"]
-            )
-            st.dataframe(cost_by_line[["product_line","production_cost","logistics","marketing_promo","total_cost"]].rename(columns={
-                "product_line": "Product Line",
-                "production_cost": "Production (\u20ac)",
-                "logistics": "Logistics (\u20ac)",
-                "marketing_promo": "Mktg & Promo (\u20ac)",
-                "total_cost": "Total Cost (\u20ac)",
-            }), use_container_width=True, hide_index=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 · SKU PERFORMANCE
+# TAB 4 · SKU PERFORMANCE
 # ══════════════════════════════════════════════════════════════════════════════
-with tab5:
+with tab4:
 
     # ────────────────────────────────────────────────────────────────────────
     # SECTION A: Primary Sell-In
     # ────────────────────────────────────────────────────────────────────────
     st.markdown("<h2>Primary Sell-In Performance</h2>", unsafe_allow_html=True)
+    if len(category_filter) < len(ALL_CATEGORIES):
+        st.caption("ℹ️ Showing all categories here — category filter applies to Overview charts only.")
 
-    if not prim_f.empty:
+    if not prim_f_nokcat.empty:
         _sort_col_p = "bottles" if metric_mode == "Bottles sold" else "gross"
-        sku_prim = prim_f.groupby("sku_id").agg(
+        sku_prim = prim_f_nokcat.groupby("sku_id").agg(
             sku_name=("sku_name", "first"),
             bottles=("bottles", "sum"),
             gross=("gross_revenue", "sum"),
@@ -1669,7 +1742,7 @@ with tab5:
         # Primary SKU trend
         _trend_col_p = "bottles"
         _trend_title_p = "Weekly Primary Sales by SKU — Bottles (all markets)"
-        sku_trend_p = prim_f.groupby(["week", "sku_id"])["bottles"].sum().reset_index()
+        sku_trend_p = prim_f_nokcat.groupby(["week", "sku_id"])["bottles"].sum().reset_index()
         fig_tp = go.Figure()
         for sku in sku_prim["sku_id"]:
             d    = sku_trend_p[sku_trend_p["sku_id"] == sku]
@@ -1701,6 +1774,7 @@ with tab5:
 
     # ────────────────────────────────────────────────────────────────────────
     # SECTION B: Retail Sell-Out
+
     # ────────────────────────────────────────────────────────────────────────
     st.markdown("<h2>Retail Sell-Out</h2>", unsafe_allow_html=True)
 
