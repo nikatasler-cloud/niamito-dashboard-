@@ -411,6 +411,34 @@ p.chart-caption {
     margin-bottom: 20px;
     font-weight: 500;
 }
+
+/* ── dataframe toolbar (Download / Search / Fullscreen) ── */
+[data-testid="stDataFrame"] [class*="toolbar"],
+[data-testid="stDataFrame"] [class*="Toolbar"],
+[data-testid="stElementToolbar"],
+[data-testid="stElementToolbarButton"] {
+    background: #F9F4EF !important;
+    border: 1px solid rgba(44,26,14,0.15) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(44,26,14,0.12) !important;
+}
+[data-testid="stElementToolbarButton"] button,
+[data-testid="stElementToolbarButton"] svg,
+[data-testid="stElementToolbar"] button,
+[data-testid="stElementToolbar"] svg {
+    color: #2C1A0E !important;
+    fill: #2C1A0E !important;
+    stroke: #2C1A0E !important;
+}
+[data-testid="stElementToolbarButton"] button:hover {
+    background: #EDE3D8 !important;
+}
+/* tooltip text inside toolbar */
+[data-testid="stElementToolbar"] [class*="tooltip"],
+[data-testid="stElementToolbar"] span {
+    color: #2C1A0E !important;
+    background: #F9F4EF !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
