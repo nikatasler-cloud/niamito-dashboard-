@@ -92,6 +92,31 @@ html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, in
     -moz-osx-font-smoothing: grayscale !important;
 }
 
+/* ── main content text: always dark ─────────── */
+.main .stMarkdown p,
+.main .stMarkdown span,
+.main .stMarkdown div,
+.main p,
+.main span,
+[data-testid="stMain"] p,
+[data-testid="stMain"] span,
+[data-testid="stMain"] li,
+[data-testid="stMain"] small,
+[data-testid="stMain"] caption {
+    color: #2C1A0E !important;
+}
+[data-testid="stMain"] h1,
+[data-testid="stMain"] h2,
+[data-testid="stMain"] h3,
+[data-testid="stMain"] h4 {
+    color: #1C1008 !important;
+}
+/* info / warning / caption boxes: force dark text */
+[data-testid="stMain"] [data-testid="stAlert"] *,
+[data-testid="stMain"] [data-testid="stCaptionContainer"] * {
+    color: #2C1A0E !important;
+}
+
 /* ─────────────────────────────────────────────────
    APP BACKGROUND
 ───────────────────────────────────────────────── */
