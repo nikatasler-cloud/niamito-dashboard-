@@ -632,9 +632,20 @@ def load_excel(file):
             return 0.0
 
     CHANNEL_TYPE_MAP = {
+        # Slovenian originals → English display names
         "Ekipa": "Team",
         "Produkcija": "Production",
         "Digitalni marketing": "Digital",
+        "Digitalni marketing AT": "Digital (AT)",
+        "Dogodki & promocije": "Events",
+        "Tradicionalni marketing": "Traditional",
+        "Influencer": "Influencer",
+        # English pass-throughs (already correct)
+        "Team": "Team",
+        "Digital": "Digital",
+        "Events": "Events",
+        "Traditional": "Traditional",
+        "Production": "Production",
         "Digitalni marketing AT": "Digital-Intl",
         "Dogodki & promocije": "Events",
         "Tradicionalni marketing": "Traditional",
@@ -758,8 +769,10 @@ def load_excel(file):
                 continue
             raw_date = r.get(date_col_p)
             try:
-                dt   = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
-                week = dt - pd.Timedelta(days=dt.weekday())
+                # Pass raw_date directly — openpyxl already gives datetime objects.
+                # NEVER convert to str first: dayfirst=True on '2024-06-01' swaps
+                # month/day and turns June 1 into January 6.
+                week = pd.to_datetime(raw_date, errors="coerce")
             except Exception:
                 week = pd.NaT
             mkt = str(r.get(mkt_col_p, "SI")).strip() if mkt_col_p else "SI"
@@ -800,8 +813,7 @@ def load_excel(file):
     def _parse_secondary_row(r, date_col, retail_col, sku_col_s, pcs_col):
         raw_date = r.get(date_col)
         try:
-            dt   = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
-            week = dt - pd.Timedelta(days=dt.weekday())
+            week = pd.to_datetime(raw_date, errors="coerce")
         except Exception:
             week = pd.NaT
         retailer = str(r.get(retail_col, "")).strip() if retail_col else ""
@@ -845,8 +857,7 @@ def load_excel(file):
                 continue
             raw_date = r.get(date_col_t)
             try:
-                dt   = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
-                week = dt - pd.Timedelta(days=dt.weekday())
+                week = pd.to_datetime(raw_date, errors="coerce")
             except Exception:
                 week = pd.NaT
             mkt = str(r.get(mkt_col_t, "SI")).strip() if mkt_col_t else "SI"
@@ -1658,12 +1669,7 @@ with tab2:
                 _ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
                 _ch_spend.columns = ["channel","spend"]
                 _total_spend_ch = max(_ch_spend["spend"].sum(), 1)
-                _total_rev = max(
-                    prim_f[prim_f["week"].dt.year == pd.to_datetime(mkt_f["start"].min()).year
-                           if not mkt_f.empty else True]["gross_revenue"].sum()
-                    if not prim_f.empty else 0, 1
-                )
-                # Use full prim_f revenue as denominator proxy
+                # Use full selected-period revenue as denominator — safe against empty frames
                 _total_rev_ch = max(prim_f["gross_revenue"].sum() if not prim_f.empty else 1, 1)
                 _ch_spend["spend_share"] = _ch_spend["spend"] / _total_spend_ch * 100
                 # Revenue share proxy: attribute revenue proportionally to spend per channel (heuristic)
