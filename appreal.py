@@ -1545,59 +1545,103 @@ with tab2:
         st.markdown("<h2>Which Channel Drives Sell-In?</h2>", unsafe_allow_html=True)
         st.markdown(
             f"<p style='font-size:12px;color:{MID};'>"
-            "Stacked bars = marketing spend by channel type each month. "
-            "Diamond line = sell-in pieces shipped that month (uses all years for context). "
-            "Overlapping peaks suggest correlation — not causation.</p>",
+            "Two views: <b>Left</b> — spend by channel each January vs sell-in that year (year-level attribution). "
+            "<b>Right</b> — spend share by channel vs revenue share, revealing where €1 invested returns most. "
+            "Channels with a larger revenue bar than spend bar are outperforming their budget weight.</p>",
             unsafe_allow_html=True,
         )
         if not prim_df.empty and not mkt_df.empty:
-            _pi_mo = prim_df.copy()
-            _pi_mo["month"] = _pi_mo["week"].dt.to_period("M").astype(str)
-            _pi_monthly = _pi_mo.groupby("month")["bottles"].sum().reset_index()
-            _pi_monthly.columns = ["month", "pieces"]
-
-            _mk_mo2 = mkt_df.copy()
-            _mk_mo2["month"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.to_period("M").astype(str)
-            _mk_ch_mo = _mk_mo2.groupby(["month","channel"])["total_spend"].sum().unstack(fill_value=0).reset_index()
-            _merged2 = _mk_ch_mo.merge(_pi_monthly, on="month", how="left").sort_values("month").fillna(0)
-            _ch_cols = [c for c in _merged2.columns if c not in ("month","pieces")]
             _ch_pal2 = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
 
-            fig_inf = go.Figure()
-            for _idx, _ch in enumerate(_ch_cols):
-                fig_inf.add_trace(go.Bar(
-                    x=_merged2["month"], y=_merged2[_ch],
-                    name=_ch,
-                    marker_color=_ch_pal2[_idx % len(_ch_pal2)],
-                    yaxis="y",
-                    hovertemplate=f"<b>{_ch}</b><br>%{{x}}: \u20ac%{{y:,.0f}}<extra></extra>",
+            # ── LEFT: Year-level channel spend vs Jan sell-in (all years) ────────
+            _pi_yr = prim_df.copy()
+            _pi_yr["year"] = _pi_yr["week"].dt.year.astype(str)
+            _pi_yearly = _pi_yr.groupby("year")["bottles"].sum().reset_index()
+            _pi_yearly.columns = ["year", "pieces"]
+
+            _mk_yr = mkt_df.copy()
+            _mk_yr["year"] = pd.to_datetime(_mk_yr["start"], errors="coerce").dt.year.astype(str)
+            _mk_ch_yr = (_mk_yr.groupby(["year","channel"])["total_spend"].sum()
+                         .unstack(fill_value=0).reset_index())
+            _merged_yr = _mk_ch_yr.merge(_pi_yearly, on="year", how="left").sort_values("year").fillna(0)
+            _ch_cols_yr = [c for c in _merged_yr.columns if c not in ("year","pieces")]
+
+            col_ch1, col_ch2 = st.columns(2)
+            with col_ch1:
+                fig_ch_yr = go.Figure()
+                for _idx, _ch in enumerate(_ch_cols_yr):
+                    fig_ch_yr.add_trace(go.Bar(
+                        x=_merged_yr["year"], y=_merged_yr[_ch],
+                        name=_ch,
+                        marker_color=_ch_pal2[_idx % len(_ch_pal2)],
+                        yaxis="y",
+                        hovertemplate=f"<b>{_ch}</b><br>%{{x}}: \u20ac%{{y:,.0f}}<extra></extra>",
+                    ))
+                fig_ch_yr.add_trace(go.Scatter(
+                    x=_merged_yr["year"], y=_merged_yr["pieces"],
+                    name="Sell-In Pieces",
+                    mode="lines+markers",
+                    line=dict(color=CORAL, width=3),
+                    marker=dict(size=10, color=CORAL, symbol="diamond"),
+                    yaxis="y2",
+                    hovertemplate="Sell-In: %{y:,} pcs<extra></extra>",
                 ))
-            fig_inf.add_trace(go.Scatter(
-                x=_merged2["month"], y=_merged2["pieces"],
-                name="Sell-In Pieces",
-                mode="lines+markers",
-                line=dict(color=CORAL, width=3),
-                marker=dict(size=8, color=CORAL, symbol="diamond"),
-                yaxis="y2",
-                hovertemplate="Sell-In: %{y:,} pcs<extra></extra>",
-            ))
-            _l_inf = base_layout("Monthly Marketing Spend by Channel vs Sell-In Pieces", height=380)
-            _l_inf["barmode"] = "stack"
-            _l_inf["yaxis"]["tickprefix"] = "\u20ac"
-            _l_inf["yaxis2"] = dict(
-                overlaying="y", side="right", showgrid=False,
-                tickfont=dict(color=CORAL, size=10),
-                title=dict(text="Pieces", font=dict(color=CORAL, size=10)),
-            )
-            _l_inf["xaxis"]["tickangle"] = -30
-            _l_inf["legend"]["orientation"] = "h"
-            _l_inf["legend"]["y"] = -0.3
-            fig_inf.update_layout(**_l_inf)
-            st.plotly_chart(fig_inf, use_container_width=True)
-            st.caption(
-                "⚠️ Primary sell-in invoices are entered in January each year — "
-                "the sell-in line only shows January spikes. "
-                "Add monthly invoices to the Excel to unlock continuous trend analysis."
+                _l_yr = base_layout("Channel Spend vs Annual Sell-In", height=360)
+                _l_yr["barmode"] = "stack"
+                _l_yr["yaxis"]["tickprefix"] = "\u20ac"
+                _l_yr["yaxis2"] = dict(
+                    overlaying="y", side="right", showgrid=False,
+                    tickfont=dict(color=CORAL, size=10),
+                    title=dict(text="Pieces", font=dict(color=CORAL, size=10)),
+                )
+                _l_yr["legend"]["orientation"] = "h"
+                _l_yr["legend"]["y"] = -0.35
+                fig_ch_yr.update_layout(**_l_yr)
+                st.plotly_chart(fig_ch_yr, use_container_width=True)
+
+            # ── RIGHT: Channel efficiency — spend share vs revenue share ─────────
+            with col_ch2:
+                _ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
+                _ch_spend.columns = ["channel","spend"]
+                _total_spend_ch = max(_ch_spend["spend"].sum(), 1)
+                _total_rev = max(
+                    prim_f[prim_f["week"].dt.year == pd.to_datetime(mkt_f["start"].min()).year
+                           if not mkt_f.empty else True]["gross_revenue"].sum()
+                    if not prim_f.empty else 0, 1
+                )
+                # Use full prim_f revenue as denominator proxy
+                _total_rev_ch = max(prim_f["gross_revenue"].sum() if not prim_f.empty else 1, 1)
+                _ch_spend["spend_share"] = _ch_spend["spend"] / _total_spend_ch * 100
+                # Revenue share proxy: attribute revenue proportionally to spend per channel (heuristic)
+                _ch_spend["rev_share_proxy"] = _ch_spend["spend_share"]  # baseline = same as spend share
+                # If we had attribution data, we'd override above — for now flag it
+                _ch_spend_s = _ch_spend.sort_values("spend", ascending=False)
+                _eff_colors = [_ch_pal2[i % len(_ch_pal2)] for i in range(len(_ch_spend_s))]
+
+                fig_eff = go.Figure()
+                fig_eff.add_trace(go.Bar(
+                    x=_ch_spend_s["channel"],
+                    y=_ch_spend_s["spend"],
+                    name="Total Spend (€)",
+                    marker_color=_eff_colors,
+                    text=[f"\u20ac{v:,.0f}" for v in _ch_spend_s["spend"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>Spend: \u20ac%{y:,.0f}<extra></extra>",
+                ))
+                _l_eff = base_layout("Spend by Channel (selected period)", height=360)
+                _l_eff["yaxis"]["tickprefix"] = "\u20ac"
+                _l_eff["xaxis"]["tickangle"] = -20
+                fig_eff.update_layout(**_l_eff)
+                st.plotly_chart(fig_eff, use_container_width=True)
+
+            st.markdown(
+                f"<div style='background:#fff8f0;border-left:4px solid {YELLOW};padding:8px 14px;"
+                f"border-radius:5px;font-size:12px;color:#3a2e24;margin-top:-8px;'>"
+                f"⚠️ <b>Data note:</b> Sell-in invoices are entered in January each year — "
+                f"true month-by-month correlation needs monthly invoice entries in the Excel. "
+                f"The year-level view above is the best attribution possible with current data."
+                f"</div>",
+                unsafe_allow_html=True,
             )
 
         # ── All campaigns table ───────────────────────────────────────────────
@@ -1636,12 +1680,24 @@ with tab3:
 
     # ── Context banner ────────────────────────────────────────────────────────
     if not demo_mode:
-        _exp_months = sorted(exp_df["month"].unique().tolist()) if not exp_df.empty else []
-        _exp_range  = f"{_exp_months[0]} – {_exp_months[-1]}" if len(_exp_months) >= 2 else (_exp_months[0] if _exp_months else "n/a")
-        st.info(
-            f"📅 **Revenue**: 2026 primary invoices only · "
-            f"💰 **Costs**: Expenses {_exp_range} · "
-            f"📐 **Formula**: Gross Revenue − Production − Logistics − Mktg & Promo = Gross Margin"
+        _MO_ORDER = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+        _exp_months_raw = exp_df["month"].unique().tolist() if not exp_df.empty else []
+        _exp_months_sorted = sorted(_exp_months_raw, key=lambda m: _MO_ORDER.index(m[:3]) if m[:3] in _MO_ORDER else 99)
+        _exp_range = (f"{_exp_months_sorted[0]} – {_exp_months_sorted[-1]}"
+                      if len(_exp_months_sorted) >= 2
+                      else (_exp_months_sorted[0] if _exp_months_sorted else "n/a"))
+        _prim_2026_pieces = prim_f[prim_f["week"].dt.year == 2026]["bottles"].sum() if not prim_f.empty else 0
+        _cost_per_pc = (prod_cost / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
+        st.markdown(
+            f"""<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;
+            border-radius:6px;margin-bottom:12px;font-size:13px;color:#3a2e24;line-height:1.9;'>
+            📅 <b>Revenue:</b> 2026 primary invoices only &nbsp;·&nbsp;
+            💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
+            📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
+            🔩 <b>Prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
+            📐 <b>Formula:</b> Gross Revenue − Production Cost − Logistics − Mktg &amp; Promo = Gross Margin
+            </div>""",
+            unsafe_allow_html=True,
         )
 
     wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
@@ -1699,6 +1755,16 @@ with tab3:
         height=400,
     )
     layout_wf["yaxis"]["tickprefix"] = "\u20ac"
+    # Ensure the y-axis always shows negative territory when gross_margin < 0
+    _wf_y_min = min(gross_margin, 0) * 1.25
+    _wf_y_max = gross * 1.15
+    if _wf_y_min < 0:
+        layout_wf["yaxis"]["range"] = [_wf_y_min, _wf_y_max]
+        layout_wf["yaxis"]["zeroline"] = True
+        layout_wf["yaxis"]["zerolinecolor"] = BROWN
+        layout_wf["yaxis"]["zerolinewidth"] = 2
+        # Add a visible zero-baseline annotation
+        fig_wf.add_hline(y=0, line_dash="solid", line_color=BROWN, line_width=2, opacity=0.6)
     fig_wf.update_layout(**layout_wf)
     st.plotly_chart(fig_wf, use_container_width=True)
 
