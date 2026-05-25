@@ -1095,6 +1095,19 @@ elif period == "Last 6 months":
     stock_f = stock_f[stock_f["week"] >= cutoff]
 # "All data" → no filter
 
+# ── Apply period filter to marketing calendar ─────────────────────────────
+_mkt_start = pd.to_datetime(mkt_f["start"], errors="coerce") if not mkt_f.empty else pd.Series(dtype="datetime64[ns]")
+if period == "Custom range" and custom_range and len(custom_range) == 2:
+    _ms, _me = pd.Timestamp(custom_range[0]), pd.Timestamp(custom_range[1])
+    mkt_f = mkt_f[(_mkt_start >= _ms) & (_mkt_start <= _me)]
+elif period == "This year (YTD)":
+    mkt_f = mkt_f[_mkt_start >= jan1_this_year]
+elif period == "Last 3 months":
+    mkt_f = mkt_f[_mkt_start >= (today - pd.DateOffset(months=3))]
+elif period == "Last 6 months":
+    mkt_f = mkt_f[_mkt_start >= (today - pd.DateOffset(months=6))]
+# "All data" → no filter
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HEADER
@@ -1129,24 +1142,87 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
 
-    # ── KPI row ───────────────────────────────────────────
-    total_mkt_spd  = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
-    total_gross    = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
-    total_net_rev  = prim_f["net_revenue"].sum() if not prim_f.empty else 0
-    prim_pieces    = prim_f["bottles"].sum() if not prim_f.empty else 0
-    rev_per_mkt    = total_gross / max(total_mkt_spd, 1)
+    # ── KPI calculations ─────────────────────────────────────────────────────
+    total_mkt_spd = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
+    total_gross   = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
+    total_net_rev = prim_f["net_revenue"].sum() if not prim_f.empty else 0
+    prim_pieces   = prim_f["bottles"].sum() if not prim_f.empty else 0
+    rev_per_mkt   = total_gross / max(total_mkt_spd, 1)
 
+    # ── YoY comparison: same period last year ────────────────────────────────
+    def _prior_year_prim(pf_full, period_name, jan1_ty, today_ts, custom_range_val):
+        """Return prim_df filtered to the same calendar window one year earlier."""
+        if period_name == "This year (YTD)":
+            py_start = jan1_ty - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Last 3 months":
+            py_start = today_ts - pd.DateOffset(months=3) - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Last 6 months":
+            py_start = today_ts - pd.DateOffset(months=6) - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Custom range" and custom_range_val and len(custom_range_val) == 2:
+            py_start = pd.Timestamp(custom_range_val[0]) - pd.DateOffset(years=1)
+            py_end   = pd.Timestamp(custom_range_val[1]) - pd.DateOffset(years=1)
+        else:
+            return pd.DataFrame()
+        if pf_full.empty:
+            return pd.DataFrame()
+        return pf_full[(pf_full["week"] >= py_start) & (pf_full["week"] <= py_end)]
+
+    py_df    = _prior_year_prim(prim_df, period, jan1_this_year, today, custom_range if period == "Custom range" else None)
+    py_pieces = py_df["bottles"].sum() if not py_df.empty else 0
+    py_gross  = py_df["gross_revenue"].sum() if not py_df.empty else 0
+
+    def _delta_str(curr, prev, prefix="", suffix="", is_currency=False):
+        if prev == 0:
+            return None
+        diff = curr - prev
+        pct  = diff / prev * 100
+        sign = "+" if diff >= 0 else ""
+        if is_currency:
+            return f"{sign}€{abs(diff):,.0f}  ({sign}{pct:.1f}% vs prior yr)"
+        return f"{sign}{diff:,.0f}  ({sign}{pct:.1f}% vs prior yr)"
+
+    pieces_delta = _delta_str(prim_pieces, py_pieces)
+    gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
+
+    # ── KPI row ───────────────────────────────────────────────────────────────
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total Pieces Sold (sell-in)", f"{prim_pieces:,.0f}")
-    k2.metric("Gross Revenue",               f"\u20ac{total_gross:,.0f}",
-              delta=f"Net \u20ac{total_net_rev:,.0f}")
-    k3.metric("Marketing Spend",             f"\u20ac{total_mkt_spd:,.0f}")
-    k4.metric("Rev per \u20ac Marketing",    f"\u20ac{rev_per_mkt:,.2f}")
+    k1.metric(
+        "Total Pieces Sold (sell-in)",
+        f"{prim_pieces:,.0f}",
+        delta=pieces_delta,
+        help=f"Prior year same period: {py_pieces:,.0f} pcs" if py_pieces else "No prior-year data for this period",
+    )
+    k2.metric(
+        "Gross Revenue",
+        f"€{total_gross:,.0f}",
+        delta=gross_delta,
+        help=f"Prior year same period: €{py_gross:,.0f}" if py_gross else "No prior-year data for this period",
+    )
+    k3.metric("Marketing Spend", f"€{total_mkt_spd:,.0f}")
+    k4.metric(
+        "Rev per € Marketing",
+        f"€{rev_per_mkt:,.2f}",
+        help="Gross revenue ÷ marketing spend. Higher = better ROI.",
+    )
 
     st.markdown("")
 
+    if not demo_mode and not prim_f.empty:
+        _latest_inv  = prim_f["week"].max()
+        _earliest_inv = prim_f["week"].min()
+        _n_inv = len(prim_f)
+        st.caption(
+            f"📦 {_n_inv} invoice rows in selected period · "
+            f"{_earliest_inv.strftime('%d %b %Y') if pd.notna(_earliest_inv) else '?'}"
+            f" → {_latest_inv.strftime('%d %b %Y') if pd.notna(_latest_inv) else '?'} · "
+            "Dates are read correctly — primary sales contain January invoice batches only."
+        )
+
     # ── Weekly sell-in trend + Sell-In vs Marketing Spend ────────────────────
-    col_trend, col_mktcorr = st.columns(2)
+    col_trend, col_mktcorr = st.columns([0.55, 0.45])
 
     with col_trend:
         if not prim_f.empty:
@@ -1229,26 +1305,23 @@ with tab1:
         else:
             st.info("Need both sell-in and marketing data for this chart.")
 
-    # ── Marketing Spend donut ─────────────────────────────
-    ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index() if not mkt_f.empty else pd.DataFrame()
-    if not ch_spend.empty:
-        ch_spend = ch_spend[ch_spend["total_spend"] > 0].sort_values("total_spend", ascending=False)
-    palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
-
-    fig2 = go.Figure(go.Pie(
-        labels=ch_spend["channel"] if not ch_spend.empty else [],
-        values=ch_spend["total_spend"] if not ch_spend.empty else [],
-        hole=0.52,
-        marker=dict(colors=palette[:len(ch_spend)], line=dict(color=CREAM, width=2)),
-        textinfo="percent",
-        hovertemplate="<b>%{label}</b><br>\u20ac%{value:,.0f}<extra></extra>",
-    ))
-    layout2 = base_layout("Marketing Spend by Channel", height=320, legend_below=False)
-    layout2["legend"]["orientation"] = "v"
-    layout2["legend"]["x"] = 1.0
-    layout2["legend"]["y"] = 0.5
-    fig2.update_layout(**layout2)
-    st.plotly_chart(fig2, use_container_width=True)
+    # ── Primary sell-in summary table ────────────────────────────────────────
+    if not prim_f.empty:
+        _cat_summary = prim_f.groupby("category").agg(
+            pieces=("bottles", "sum"),
+            revenue=("gross_revenue", "sum"),
+        ).reset_index().sort_values("revenue", ascending=False)
+        _cat_summary["Avg price/pc (€)"] = (_cat_summary["revenue"] / _cat_summary["pieces"].clip(lower=1)).round(2)
+        _cat_summary.columns = ["Category", "Pieces", "Revenue (€)", "Avg price/pc (€)"]
+        _cat_summary["Pieces"] = _cat_summary["Pieces"].apply(lambda x: f"{int(x):,}")
+        _cat_summary["Revenue (€)"] = _cat_summary["Revenue (€)"].apply(lambda x: f"€{x:,.0f}")
+        _cat_summary["Avg price/pc (€)"] = _cat_summary["Avg price/pc (€)"].apply(lambda x: f"€{x:.2f}")
+        st.markdown(
+            f"<p style='font-size:12px; color:{MID}; margin:4px 0 6px;'>"
+            "<b>Sell-In by Product Category</b></p>",
+            unsafe_allow_html=True,
+        )
+        st.dataframe(_cat_summary, use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1374,7 +1447,8 @@ with tab2:
                 st.markdown("<h2>Influencer Activations</h2>", unsafe_allow_html=True)
                 st.markdown(
                     f"<p style='font-size:11px;color:{MID};margin-top:-8px;'>"
-                    f"{len(inf_df)} activations · ROAS pending sell-out linkage</p>",
+                    f"{len(inf_df)} activation(s) logged · "
+                    f"Add influencer handles in column K of the Marketing Calendar to track more.</p>",
                     unsafe_allow_html=True,
                 )
                 max_cols = min(len(inf_df), 4)
@@ -1454,8 +1528,72 @@ with tab2:
             fig_gantt.update_layout(**l_gantt)
             st.plotly_chart(fig_gantt, use_container_width=True)
 
+        # ── Marketing spend by channel vs sell-in pieces ─────────────────────
+        st.markdown("<h2>Which Channel Drives Sell-In?</h2>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='font-size:12px;color:{MID};'>"
+            "Stacked bars = marketing spend by channel type each month. "
+            "Diamond line = sell-in pieces shipped that month (uses all years for context). "
+            "Overlapping peaks suggest correlation — not causation.</p>",
+            unsafe_allow_html=True,
+        )
+        if not prim_df.empty and not mkt_df.empty:
+            _pi_mo = prim_df.copy()
+            _pi_mo["month"] = _pi_mo["week"].dt.to_period("M").astype(str)
+            _pi_monthly = _pi_mo.groupby("month")["bottles"].sum().reset_index()
+            _pi_monthly.columns = ["month", "pieces"]
+
+            _mk_mo2 = mkt_df.copy()
+            _mk_mo2["month"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.to_period("M").astype(str)
+            _mk_ch_mo = _mk_mo2.groupby(["month","channel"])["total_spend"].sum().unstack(fill_value=0).reset_index()
+            _merged2 = _mk_ch_mo.merge(_pi_monthly, on="month", how="left").sort_values("month").fillna(0)
+            _ch_cols = [c for c in _merged2.columns if c not in ("month","pieces")]
+            _ch_pal2 = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
+
+            fig_inf = go.Figure()
+            for _idx, _ch in enumerate(_ch_cols):
+                fig_inf.add_trace(go.Bar(
+                    x=_merged2["month"], y=_merged2[_ch],
+                    name=_ch,
+                    marker_color=_ch_pal2[_idx % len(_ch_pal2)],
+                    yaxis="y",
+                    hovertemplate=f"<b>{_ch}</b><br>%{{x}}: \u20ac%{{y:,.0f}}<extra></extra>",
+                ))
+            fig_inf.add_trace(go.Scatter(
+                x=_merged2["month"], y=_merged2["pieces"],
+                name="Sell-In Pieces",
+                mode="lines+markers",
+                line=dict(color=CORAL, width=3),
+                marker=dict(size=8, color=CORAL, symbol="diamond"),
+                yaxis="y2",
+                hovertemplate="Sell-In: %{y:,} pcs<extra></extra>",
+            ))
+            _l_inf = base_layout("Monthly Marketing Spend by Channel vs Sell-In Pieces", height=380)
+            _l_inf["barmode"] = "stack"
+            _l_inf["yaxis"]["tickprefix"] = "\u20ac"
+            _l_inf["yaxis2"] = dict(
+                overlaying="y", side="right", showgrid=False,
+                tickfont=dict(color=CORAL, size=10),
+                title=dict(text="Pieces", font=dict(color=CORAL, size=10)),
+            )
+            _l_inf["xaxis"]["tickangle"] = -30
+            _l_inf["legend"]["orientation"] = "h"
+            _l_inf["legend"]["y"] = -0.3
+            fig_inf.update_layout(**_l_inf)
+            st.plotly_chart(fig_inf, use_container_width=True)
+            st.caption(
+                "⚠️ Primary sell-in invoices are entered in January each year — "
+                "the sell-in line only shows January spikes. "
+                "Add monthly invoices to the Excel to unlock continuous trend analysis."
+            )
+
         # ── All campaigns table ───────────────────────────────────────────────
-        st.markdown("<h2>All Campaigns</h2>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h2>All Campaigns</h2>"
+            f"<p style='font-size:11px;color:{MID};margin-top:-6px;'>"
+            f"{len(mkt_f)} campaigns · \u20ac{mkt_f['total_spend'].sum():,.0f} total in selected period</p>",
+            unsafe_allow_html=True,
+        )
         tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas"] if c in mkt_f.columns]
         tbl = mkt_f[tbl_cols].copy()
         rename_map = {
@@ -1483,6 +1621,27 @@ with tab3:
         unsafe_allow_html=True,
     )
 
+    # ── Context banner ────────────────────────────────────────────────────────
+    if not demo_mode:
+        _pmin = prim_df["week"].min() if not prim_df.empty else None
+        _pmax = prim_df["week"].max() if not prim_df.empty else None
+        _date_rng = (
+            f"{_pmin.strftime('%b %Y')} → {_pmax.strftime('%b %Y')}"
+            if _pmin is not None and pd.notna(_pmin) else "unknown"
+        )
+        _exp_note = (
+            f"{len(exp_df)} expense rows · {exp_df['product_line'].nunique()} product lines"
+            if not exp_df.empty else "no expense data loaded"
+        )
+        st.info(
+            f"**How this works** · "
+            f"**Revenue**: Primary Sales invoices ({_date_rng} — filtered to selected period & market). "
+            f"**Costs**: Expenses sheet ({_exp_note}, Jan–Apr 2026 — not period-filtered, covers 2026 only). "
+            f"**SKUs**: all products combined. "
+            f"**Trade discounts**: excluded (all zero in current data). "
+            f"Gross Margin = Revenue − Production − Logistics − Marketing & Promo."
+        )
+
     wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
@@ -1502,19 +1661,19 @@ with tab3:
     mktg_promo= exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
     total_exp = prod_cost + logistics + mktg_promo
 
-    # Net = gross minus all deductions
-    gross_margin = gross - prod_cost - logistics - mktg_promo - trade_disc
+    # Gross Margin = Revenue − costs (trade discounts excluded — all zero)
+    gross_margin = gross - prod_cost - logistics - mktg_promo
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
     if total_exp > 0:
-        wf_labels  = ["Gross Revenue", "Production Cost", "Logistics", "Mktg & Promo", "Trade Discounts", "Gross Margin"]
-        wf_measure = ["absolute",       "relative",        "relative",  "relative",      "relative",        "total"]
-        wf_values  = [gross,            -prod_cost,        -logistics,  -mktg_promo,     -trade_disc,       gross_margin]
+        wf_labels  = ["Gross Revenue", "Production Cost", "Logistics", "Mktg & Promo", "Gross Margin"]
+        wf_measure = ["absolute",       "relative",        "relative",  "relative",      "total"]
+        wf_values  = [gross,            -prod_cost,        -logistics,  -mktg_promo,     gross_margin]
     else:
-        wf_labels  = ["Gross Revenue", "Trade Discounts", "Marketing Spend", "Gross Margin"]
-        wf_measure = ["absolute",       "relative",        "relative",        "total"]
-        wf_values  = [gross,            -trade_disc,       -mkt_spend,        gross - trade_disc - mkt_spend]
-        gross_margin = gross - trade_disc - mkt_spend
+        wf_labels  = ["Gross Revenue", "Marketing Spend", "Gross Margin"]
+        wf_measure = ["absolute",       "relative",        "total"]
+        gross_margin = gross - mkt_spend
+        wf_values  = [gross,            -mkt_spend,        gross_margin]
 
     fig_wf = go.Figure(go.Waterfall(
         name="Value Leakage",
@@ -1532,7 +1691,7 @@ with tab3:
     ))
     margin_pct = gross_margin / max(gross, 1) * 100
     layout_wf = base_layout(
-        f"P&L Waterfall — {wf_mkt}  (Gross Margin: {margin_pct:.1f}%)",
+        f"Profitability Waterfall — {wf_mkt}  ·  Gross Margin: {margin_pct:.1f}%",
         height=400,
     )
     layout_wf["yaxis"]["tickprefix"] = "\u20ac"
@@ -1648,20 +1807,18 @@ with tab3:
         pd_ = prim_f[prim_f["market"] == mkt] if not prim_f.empty else pd.DataFrame()
         md_ = mkt_f[mkt_f["market"].isin([mkt, "ALL"])] if not mkt_f.empty else pd.DataFrame()
         g   = pd_["gross_revenue"].sum() if not pd_.empty else 0
-        td  = pd_["trade_discount"].sum() if not pd_.empty else 0
         ms  = md_["total_spend"].sum() if not md_.empty else 0
-        nr  = g - td - ms
+        nr  = g - ms
         margin_rows.append({
-            "Market":        mkt,
-            "Gross (\u20ac)":     g,
-            "Trade Disc (\u20ac)":td,
-            "Mktg Spend (\u20ac)":ms,
-            "Net Rev (\u20ac)":   nr,
-            "Net Margin %":  f"{nr/max(g,1)*100:.1f}%",
+            "Market":            mkt,
+            "Gross Revenue (\u20ac)": g,
+            "Mktg Spend (\u20ac)":   ms,
+            "Net Revenue (\u20ac)":  nr,
+            "Net Margin %":      f"{nr/max(g,1)*100:.1f}%",
         })
     if margin_rows:
         margin_df = pd.DataFrame(margin_rows)
-        for col in ["Gross (\u20ac)","Trade Disc (\u20ac)","Mktg Spend (\u20ac)","Net Rev (\u20ac)"]:
+        for col in ["Gross Revenue (\u20ac)", "Mktg Spend (\u20ac)", "Net Revenue (\u20ac)"]:
             margin_df[col] = margin_df[col].apply(lambda x: f"\u20ac{x:,.0f}")
         st.dataframe(margin_df, use_container_width=True, hide_index=True)
 
