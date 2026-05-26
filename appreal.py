@@ -1978,7 +1978,7 @@ with tab4:
             💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
             🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Production COGS − Logistics − Mktg &amp; Promo − Promo &amp; External − Internal Consumption = Gross Margin
+            📐 <b>Formula:</b> Gross Revenue − Production Cost + Active Stock + Internal Consumption − Promo &amp; External − Logistics − Mktg &amp; Promo = Gross Margin
             </div>""",
             unsafe_allow_html=True,
         )
@@ -2028,38 +2028,22 @@ with tab4:
     logistics  = exp_df_pf["logistics"].sum()        if not exp_df_pf.empty else 0
     mktg_promo = exp_df_pf["marketing_promo"].sum()  if not exp_df_pf.empty else 0
 
-    # ── COGS allocation ───────────────────────────────────────────────────────
-    # stock_val  → balance sheet asset (capitalized, NOT expensed this period)
-    # promo_val  → Promo & External spend (expensed, separate P&L line on top of COGS)
-    # internal_val → Internal Consumption (expensed, separate P&L line on top of COGS)
-    cogs_adjusted = max(prod_cost - stock_val, 0)
-    total_exp = cogs_adjusted + promo_val + internal_val + logistics + mktg_promo
-
-    # Gross Margin = Revenue − COGS − all additional expense lines
-    gross_margin = gross - cogs_adjusted - promo_val - internal_val - logistics - mktg_promo
-
-    # ── Inventory / allocation callout ────────────────────────────────────────
-    if stock_val > 0:
-        st.markdown(
-            f"<div style='background:#fdf6ee;border-left:3px solid {BROWN};padding:7px 14px;"
-            f"border-radius:5px;margin-bottom:8px;font-size:12.5px;color:#3a2e24;'>"
-            f"🏭 <b>Active stock value:</b> €{stock_val:,.2f} — removed from P&L, sits on the balance sheet as inventory."
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    # ── P&L logic ─────────────────────────────────────────────────────────────
+    # Start from full production cost, then:
+    #   Active Stock      → asset created, adds back to margin (green bar)
+    #   Internal Consumption → value retained internally, adds back to margin (green bar)
+    #   Promo & External  → outflow, reduces margin (red bar)
+    total_exp    = prod_cost + logistics + mktg_promo + promo_val - stock_val - internal_val
+    gross_margin = gross - prod_cost + stock_val + internal_val - promo_val - logistics - mktg_promo
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
-    if total_exp > 0:
-        wf_labels  = ["Gross Revenue", "Production COGS", "Logistics", "Mktg & Promo"]
-        wf_measure = ["absolute",       "relative",        "relative",  "relative"]
-        wf_values  = [gross,            -cogs_adjusted,    -logistics,  -mktg_promo]
-        # Always show Promo & External and Internal Consumption when expense data is present
-        wf_labels.append("Promo & External")
-        wf_measure.append("relative")
-        wf_values.append(-promo_val)
-        wf_labels.append("Internal Consumption")
-        wf_measure.append("relative")
-        wf_values.append(-internal_val)
+    if prod_cost > 0 or logistics > 0 or mktg_promo > 0:
+        wf_labels  = ["Gross Revenue", "Production Cost", "Active Stock", "Internal Consumption",
+                      "Promo & External", "Logistics", "Mktg & Promo"]
+        wf_measure = ["absolute",       "relative",       "relative",     "relative",
+                      "relative",        "relative",       "relative"]
+        wf_values  = [gross,            -prod_cost,       +stock_val,     +internal_val,
+                      -promo_val,        -logistics,       -mktg_promo]
         wf_labels.append("Gross Margin")
         wf_measure.append("total")
         wf_values.append(gross_margin)
@@ -2118,13 +2102,13 @@ with tab4:
     if not prim_f.empty or not exp_df.empty:
         _pf_summ_gross = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
         _pf_summ_pcs   = prim_f["bottles"].sum() if not prim_f.empty else 0
-        _exp_total     = (exp_df["production_cost"].sum() + exp_df["logistics"].sum()
-                          + exp_df["marketing_promo"].sum()) if not exp_df.empty else 0
         _pf4_k1, _pf4_k2, _pf4_k3, _pf4_k4 = st.columns(4)
-        _pf4_k1.metric("Gross Revenue",   f"€{_pf_summ_gross:,.0f}")
-        _pf4_k2.metric("Total Costs",     f"€{_exp_total:,.0f}")
-        _pf4_k3.metric("Gross Margin",    f"€{_pf_summ_gross - _exp_total:,.0f}")
-        _pf4_k4.metric("Margin %",        f"{(_pf_summ_gross - _exp_total)/max(_pf_summ_gross,1)*100:.1f}%")
+        _pf4_k1.metric("Gross Revenue", f"€{_pf_summ_gross:,.0f}")
+        _pf4_k2.metric("Net Cost Charge",
+                        f"€{total_exp:,.0f}",
+                        help="Production Cost − Active Stock − Internal Consumption + Promo & External + Logistics + Mktg & Promo")
+        _pf4_k3.metric("Gross Margin",  f"€{gross_margin:,.0f}")
+        _pf4_k4.metric("Margin %",      f"{gross_margin/max(gross,1)*100:.1f}%")
         st.markdown("")
 
 
