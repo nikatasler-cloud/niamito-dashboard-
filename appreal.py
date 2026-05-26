@@ -1298,17 +1298,54 @@ with tab1:
 
     # ── KPI calculations ─────────────────────────────────────────────────────
     total_gross   = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
-    total_net_rev = prim_f["net_revenue"].sum() if not prim_f.empty else 0
     prim_pieces   = prim_f["bottles"].sum() if not prim_f.empty else 0
     avg_price_pc  = total_gross / max(prim_pieces, 1)
 
+    # YoY comparison: same calendar window one year back
+    def _prior_year_prim(pf_full, period_name, jan1_ty, today_ts, custom_range_val):
+        if period_name == "This year (YTD)":
+            py_start = jan1_ty - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Last 3 months":
+            py_start = today_ts - pd.DateOffset(months=3) - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Last 6 months":
+            py_start = today_ts - pd.DateOffset(months=6) - pd.DateOffset(years=1)
+            py_end   = today_ts - pd.DateOffset(years=1)
+        elif period_name == "Custom range" and custom_range_val and len(custom_range_val) == 2:
+            py_start = pd.Timestamp(custom_range_val[0]) - pd.DateOffset(years=1)
+            py_end   = pd.Timestamp(custom_range_val[1]) - pd.DateOffset(years=1)
+        else:
+            return pd.DataFrame()
+        if pf_full.empty:
+            return pd.DataFrame()
+        return pf_full[(pf_full["week"] >= py_start) & (pf_full["week"] <= py_end)]
+
+    py_df     = _prior_year_prim(prim_df, period, jan1_this_year, today,
+                                  custom_range if period == "Custom range" else None)
+    py_pieces = py_df["bottles"].sum() if not py_df.empty else 0
+    py_gross  = py_df["gross_revenue"].sum() if not py_df.empty else 0
+
+    def _delta_str(curr, prev, is_currency=False):
+        if prev == 0:
+            return None
+        diff = curr - prev
+        pct  = diff / prev * 100
+        sign = "+" if diff >= 0 else ""
+        if is_currency:
+            return f"{sign}€{abs(diff):,.0f}  ({sign}{pct:.1f}% vs prior yr)"
+        return f"{sign}{diff:,.0f}  ({sign}{pct:.1f}% vs prior yr)"
+
+    pieces_delta = _delta_str(prim_pieces, py_pieces)
+    gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
+
     # ── KPI row ───────────────────────────────────────────────────────────────
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Pieces Sold (sell-in)", f"{prim_pieces:,.0f}")
-    k2.metric("Gross Revenue",         f"€{total_gross:,.0f}")
-    k3.metric("Net Revenue",           f"€{total_net_rev:,.0f}",
-              help="Gross revenue after trade discounts.")
-    k4.metric("Avg Price / Piece",     f"€{avg_price_pc:.2f}")
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Pieces Sold", f"{prim_pieces:,.0f}", delta=pieces_delta,
+              help=f"Prior year same period: {py_pieces:,.0f} pcs" if py_pieces else None)
+    k2.metric("Gross Revenue", f"€{total_gross:,.0f}", delta=gross_delta,
+              help=f"Prior year same period: €{py_gross:,.0f}" if py_gross else None)
+    k3.metric("Avg Price / Piece", f"€{avg_price_pc:.2f}")
 
     st.markdown("")
 
@@ -1316,37 +1353,36 @@ with tab1:
         _latest_inv   = prim_f["week"].max()
         _earliest_inv = prim_f["week"].min()
         st.info(
-            f"📦 **Sell-in data:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
+            f"📦 **Primary sales data:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
             f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
         )
 
-    # ── Weekly sell-in trend + Sell-In vs Marketing Spend ────────────────────
+    # ── Monthly sales by category + Sales vs Marketing ────────────────────────
     col_trend, col_mktcorr = st.columns([0.55, 0.45])
 
     with col_trend:
         if not prim_f.empty:
             _pf_mo = prim_f.copy()
-            _pf_mo["_mkey"] = _pf_mo["week"].dt.to_period("M").astype(str)  # sort key
-            _pf_mo["month"] = _pf_mo["week"].dt.strftime("%b %Y")            # display label
+            _pf_mo["_mkey"] = _pf_mo["week"].dt.to_period("M").astype(str)
+            _pf_mo["month"] = _pf_mo["week"].dt.strftime("%b %Y")
             cat_monthly = _pf_mo.groupby(["_mkey", "month", "category"]).agg(
                 pieces=("bottles","sum"),
                 revenue=("gross_revenue","sum"),
             ).reset_index().sort_values("_mkey")
-            y_col = "pieces" if metric_mode == "Pieces sold" else "revenue"
+            y_col   = "pieces" if metric_mode == "Pieces sold" else "revenue"
             y_label = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
             fig_sw = go.Figure()
             for cat in ALL_CATEGORIES:
                 d = cat_monthly[cat_monthly["category"] == cat]
                 if d.empty:
                     continue
-                color = CATEGORY_COLORS.get(cat, BROWN)
                 fig_sw.add_trace(go.Bar(
                     x=d["month"], y=d[y_col],
                     name=cat,
-                    marker_color=color,
+                    marker_color=CATEGORY_COLORS.get(cat, BROWN),
                     hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
                 ))
-            l_sw = base_layout(f"Monthly Sell-In by Category ({y_label})", height=300)
+            l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=300)
             l_sw["barmode"] = "stack"
             l_sw["xaxis"]["tickangle"] = -30
             if metric_mode != "Pieces sold":
@@ -1354,11 +1390,10 @@ with tab1:
             fig_sw.update_layout(**l_sw)
             st.plotly_chart(fig_sw, use_container_width=True)
         else:
-            st.info("No sell-in data.")
+            st.info("No primary sales data.")
 
     with col_mktcorr:
         if not prim_f.empty and not mkt_f.empty:
-            # Monthly sell-in
             prim_mo = prim_f.copy()
             prim_mo["_mkey"] = prim_mo["week"].dt.to_period("M").astype(str)
             prim_mo["month"] = prim_mo["week"].dt.strftime("%b %Y")
@@ -1366,16 +1401,14 @@ with tab1:
                 pieces=("bottles","sum"), revenue=("gross_revenue","sum")
             ).reset_index().sort_values("_mkey")
 
-            # Monthly marketing spend
             mkt_mo = mkt_f.copy()
             mkt_mo["_mkey"] = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.to_period("M").astype(str)
             mkt_mo["month"]  = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.strftime("%b %Y")
             mkt_monthly = mkt_mo.groupby(["_mkey", "month"])["total_spend"].sum().reset_index().sort_values("_mkey")
 
-            # Merge on sort key so month labels stay consistent
             merged = prim_monthly.merge(mkt_monthly[["_mkey","month","total_spend"]],
                                         on=["_mkey","month"], how="outer").sort_values("_mkey").fillna(0)
-            si_y = "pieces" if metric_mode == "Pieces sold" else "revenue"
+            si_y     = "pieces" if metric_mode == "Pieces sold" else "revenue"
             si_label = "Pieces sold" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
 
             fig_corr = go.Figure()
@@ -1393,7 +1426,7 @@ with tab1:
                 yaxis="y2",
                 hovertemplate="%{x}: \u20ac%{y:,.0f} spend<extra></extra>",
             ))
-            l_corr = base_layout("Sell-In vs Marketing Investment (monthly)", height=300)
+            l_corr = base_layout("Sales vs Marketing Investment (monthly)", height=300)
             l_corr["yaxis2"] = dict(
                 overlaying="y", side="right",
                 tickprefix="\u20ac", showgrid=False,
@@ -1409,9 +1442,9 @@ with tab1:
             fig_corr.update_layout(**l_corr)
             st.plotly_chart(fig_corr, use_container_width=True)
         else:
-            st.info("Need both sell-in and marketing data for this chart.")
+            st.info("Need both primary sales and marketing data for this chart.")
 
-    # ── Primary sell-in summary table ────────────────────────────────────────
+    # ── Sales by category summary table ──────────────────────────────────────
     if not prim_f.empty:
         _cat_summary = prim_f.groupby("category").agg(
             pieces=("bottles", "sum"),
@@ -1424,7 +1457,7 @@ with tab1:
         _cat_summary["Avg price/pc (€)"] = _cat_summary["Avg price/pc (€)"].apply(lambda x: f"€{x:.2f}")
         st.markdown(
             f"<p style='font-size:12px; color:{MID}; margin:4px 0 6px;'>"
-            "<b>Sell-In by Product Category</b></p>",
+            "<b>Sales by Product Category</b></p>",
             unsafe_allow_html=True,
         )
         st.dataframe(_cat_summary, use_container_width=True, hide_index=True)
@@ -1434,121 +1467,98 @@ with tab1:
 # TAB 2 · SECONDARY SALES
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("<h2>Secondary Sales — Distributor to Retail</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>Secondary Sales — Sell-In by Market</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
-        "Sell-out reported by retailers via the Sell-out Template. "
-        "Units sold at the shelf, downstream of primary sell-in.</p>",
+        "Sell-in data from primary invoices, broken down by market. "
+        "Shows what was shipped into each secondary market channel.</p>",
         unsafe_allow_html=True,
     )
 
-    if not so_f.empty and "retailer" in so_f.columns:
-        _so = so_f.copy()
-        _total_so_units  = int(_so["bottles_sold"].sum())
-        _n_stores_so     = _so["retailer"].nunique()
-        _n_skus_so       = _so["sku_name"].nunique()
-        _n_markets_so    = _so["market"].nunique() if "market" in _so.columns else 0
-        _top_store_name  = _so.groupby("retailer")["bottles_sold"].sum().idxmax()
-        _top_store_units = int(_so.groupby("retailer")["bottles_sold"].sum().max())
+    if not prim_f.empty:
+        # ── KPIs ──────────────────────────────────────────────────────────────
+        _s2_pieces  = prim_f["bottles"].sum()
+        _s2_gross   = prim_f["gross_revenue"].sum()
+        _s2_markets = prim_f["market"].nunique() if "market" in prim_f.columns else 0
+        _s2_skus    = prim_f["sku_id"].nunique()
 
-        so_k1, so_k2, so_k3, so_k4 = st.columns(4)
-        so_k1.metric("Total Units Sold",  f"{_total_so_units:,}")
-        so_k2.metric("Stores Reporting",  f"{_n_stores_so}")
-        so_k3.metric("SKUs Tracked",      f"{_n_skus_so}")
-        so_k4.metric("Top Store",         _top_store_name,
-                     delta=f"{_top_store_units:,} units",
-                     help="Store with highest sell-out volume in selected period")
+        s2_k1, s2_k2, s2_k3, s2_k4 = st.columns(4)
+        s2_k1.metric("Total Pieces",    f"{int(_s2_pieces):,}")
+        s2_k2.metric("Gross Revenue",   f"€{_s2_gross:,.0f}")
+        s2_k3.metric("Markets",         f"{_s2_markets}")
+        s2_k4.metric("Active SKUs",     f"{_s2_skus}")
 
         st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
 
-        col_so_bar, col_so_mix = st.columns([0.60, 0.40])
+        # ── Monthly sell-in by market ─────────────────────────────────────────
+        if "market" in prim_f.columns:
+            _s2_mo = prim_f.copy()
+            _s2_mo["_mkey"] = _s2_mo["week"].dt.to_period("M").astype(str)
+            _s2_mo["month"] = _s2_mo["week"].dt.strftime("%b %Y")
+            _s2_y   = "bottles" if metric_mode == "Pieces sold" else "gross_revenue"
+            _s2_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (€)"
 
-        with col_so_bar:
-            _store_rank = (
-                _so.groupby("retailer")["bottles_sold"].sum()
-                .reset_index()
-                .sort_values("bottles_sold", ascending=True)
-                .tail(20)
-            )
-            _so_colors = [BROWN if i % 2 == 0 else LAVEN for i in range(len(_store_rank))]
-            fig_so_bar = go.Figure(go.Bar(
-                x=_store_rank["bottles_sold"],
-                y=_store_rank["retailer"],
-                orientation="h",
-                marker=dict(color=_so_colors, line=dict(color=CREAM, width=0.5)),
-                text=[f"{int(v):,}" for v in _store_rank["bottles_sold"]],
-                textposition="outside",
-                hovertemplate="<b>%{y}</b><br>%{x:,} units<extra></extra>",
-            ))
-            l_so_bar = base_layout("Top 20 Stores by Units Sold", height=max(340, len(_store_rank) * 24))
-            l_so_bar["xaxis"]["title"] = "Units Sold"
-            l_so_bar["margin"]["l"] = 220
-            l_so_bar["margin"]["r"] = 60
-            fig_so_bar.update_layout(**l_so_bar)
-            st.plotly_chart(fig_so_bar, use_container_width=True)
+            col_s2a, col_s2b = st.columns(2)
 
-        with col_so_mix:
-            _cat_so = (
-                _so.groupby("sku_name")["bottles_sold"].sum()
-                .reset_index()
-                .sort_values("bottles_sold", ascending=False)
-            )
-            _cat_so_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _cat_so["sku_name"]]
-            fig_so_mix = go.Figure(go.Pie(
-                labels=_cat_so["sku_name"],
-                values=_cat_so["bottles_sold"],
-                hole=0.50,
-                marker=dict(colors=_cat_so_colors, line=dict(color=CREAM, width=2)),
-                textinfo="percent",
-                hovertemplate="<b>%{label}</b><br>%{value:,} units  (%{percent})<extra></extra>",
-            ))
-            l_so_mix = base_layout("Sell-Out Mix by Product", height=340, legend_below=False)
-            l_so_mix["legend"] = dict(
-                orientation="v", x=1.02, y=0.5,
-                font=dict(size=9, color=BROWN),
-                bgcolor="rgba(0,0,0,0)",
-            )
-            fig_so_mix.update_layout(**l_so_mix)
-            st.plotly_chart(fig_so_mix, use_container_width=True)
+            with col_s2a:
+                _s2_mkt_mo = (_s2_mo.groupby(["_mkey","month","market"])[_s2_y]
+                              .sum().reset_index().sort_values("_mkey"))
+                fig_s2_mo = go.Figure()
+                for mkt in sorted(_s2_mkt_mo["market"].unique()):
+                    d = _s2_mkt_mo[_s2_mkt_mo["market"] == mkt]
+                    color = MARKET_COLORS.get(mkt, BROWN)
+                    fig_s2_mo.add_trace(go.Bar(
+                        x=d["month"], y=d[_s2_y],
+                        name=mkt,
+                        marker_color=color,
+                        hovertemplate=f"<b>{mkt}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
+                    ))
+                l_s2_mo = base_layout(f"Monthly Sell-In by Market ({_s2_lbl})", height=320)
+                l_s2_mo["barmode"] = "stack"
+                l_s2_mo["xaxis"]["tickangle"] = -30
+                if metric_mode != "Pieces sold":
+                    l_s2_mo["yaxis"]["tickprefix"] = "\u20ac"
+                fig_s2_mo.update_layout(**l_s2_mo)
+                st.plotly_chart(fig_s2_mo, use_container_width=True)
 
-        # Market breakdown (only if multi-market)
-        if "market" in _so.columns and _so["market"].nunique() > 1:
-            _mkt_so = (
-                _so.groupby("market")["bottles_sold"].sum()
-                .reset_index().sort_values("bottles_sold", ascending=False)
-            )
-            _mkt_so_colors = [MARKET_COLORS.get(m, BROWN) for m in _mkt_so["market"]]
-            col_sm1, _ = st.columns([0.35, 0.65])
-            with col_sm1:
-                fig_mkt_so = go.Figure(go.Bar(
-                    x=_mkt_so["market"], y=_mkt_so["bottles_sold"],
-                    marker=dict(color=_mkt_so_colors),
-                    text=[f"{int(v):,}" for v in _mkt_so["bottles_sold"]],
-                    textposition="outside",
-                    hovertemplate="<b>%{x}</b><br>%{y:,} units<extra></extra>",
+            with col_s2b:
+                _s2_mkt_tot = prim_f.groupby("market")[_s2_y].sum().reset_index()
+                _s2_mkt_colors = [MARKET_COLORS.get(m, BROWN) for m in _s2_mkt_tot["market"]]
+                fig_s2_mkt = go.Figure(go.Pie(
+                    labels=_s2_mkt_tot["market"],
+                    values=_s2_mkt_tot[_s2_y],
+                    hole=0.52,
+                    marker=dict(colors=_s2_mkt_colors, line=dict(color=CREAM, width=3)),
+                    textinfo="label+percent",
+                    hovertemplate="<b>%{label}</b><br>%{value:,}  (%{percent})<extra></extra>",
                 ))
-                l_mkt_so = base_layout("Units by Market", height=280)
-                fig_mkt_so.update_layout(**l_mkt_so)
-                st.plotly_chart(fig_mkt_so, use_container_width=True)
+                l_s2_mkt = base_layout(f"Market Share ({_s2_lbl})", height=320, legend_below=False)
+                l_s2_mkt["showlegend"] = False
+                fig_s2_mkt.update_layout(**l_s2_mkt)
+                st.plotly_chart(fig_s2_mkt, use_container_width=True)
 
-        # All-stores table
-        st.markdown(
-            f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:4px 0 6px;'>"
-            "All Stores — Sell-Out Detail</p>",
-            unsafe_allow_html=True,
-        )
-        _store_tbl = (
-            _so.groupby(["retailer", "market"] if "market" in _so.columns else ["retailer"])
-            .agg(units=("bottles_sold","sum"), skus=("sku_name","nunique"))
-            .reset_index()
-            .sort_values("units", ascending=False)
-            .rename(columns={"retailer":"Store","market":"Market","units":"Units Sold","skus":"SKUs"})
-        )
-        _store_tbl["Units Sold"] = _store_tbl["Units Sold"].apply(lambda x: f"{int(x):,}")
-        st.dataframe(_store_tbl, use_container_width=True, hide_index=True)
-
+        # ── Market summary table ───────────────────────────────────────────────
+        if "market" in prim_f.columns:
+            _s2_tbl = prim_f.groupby("market").agg(
+                pieces=("bottles","sum"),
+                gross=("gross_revenue","sum"),
+                skus=("sku_id","nunique"),
+            ).reset_index().sort_values("gross", ascending=False)
+            _s2_tbl["avg_px"] = (_s2_tbl["gross"] / _s2_tbl["pieces"].clip(lower=1)).round(2)
+            _s2_tbl["rev_share"] = (_s2_tbl["gross"] / _s2_tbl["gross"].sum() * 100).round(1)
+            _s2_tbl.columns = ["Market","Pieces","Gross (€)","SKUs","Avg Price/pc (€)","Revenue %"]
+            _s2_tbl["Pieces"]          = _s2_tbl["Pieces"].apply(lambda x: f"{int(x):,}")
+            _s2_tbl["Gross (€)"]       = _s2_tbl["Gross (€)"].apply(lambda x: f"€{x:,.0f}")
+            _s2_tbl["Avg Price/pc (€)"] = _s2_tbl["Avg Price/pc (€)"].apply(lambda x: f"€{x:.2f}")
+            _s2_tbl["Revenue %"]       = _s2_tbl["Revenue %"].apply(lambda x: f"{x:.1f}%")
+            st.markdown(
+                f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:4px 0 6px;'>"
+                "Sell-In by Market</p>",
+                unsafe_allow_html=True,
+            )
+            st.dataframe(_s2_tbl, use_container_width=True, hide_index=True)
     else:
-        st.info("No sell-out data available. Upload a Master Tables file with Secondary Sales data.")
+        st.info("No primary sales data available.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1560,25 +1570,36 @@ with tab3:
     # ── KPI row ───────────────────────────────────────────────────────────────
     total_spend_mkt = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
     n_campaigns     = len(mkt_f) if not mkt_f.empty else 0
-    n_influencers   = mkt_f["influencer"].notna().sum() if not mkt_f.empty and "influencer" in mkt_f.columns else 0
-    total_reach     = int(mkt_f["reach"].fillna(0).sum()) if not mkt_f.empty and "reach" in mkt_f.columns else 0
-    avg_cpm         = total_spend_mkt / max(total_reach, 1) * 1000
     avg_spend_camp  = total_spend_mkt / max(n_campaigns, 1)
 
-    mk1, mk2, mk3, mk4, mk5 = st.columns(5)
-    mk1.metric("Total Spend",           f"\u20ac{total_spend_mkt:,.0f}")
-    mk2.metric("Campaigns",             f"{n_campaigns}")
-    mk3.metric("Avg Spend / Campaign",  f"\u20ac{avg_spend_camp:,.0f}")
-    mk4.metric("Influencer Reach",      f"{total_reach:,}" if total_reach else "—",
-               help="Sum of estimated reach across all influencer activations")
-    mk5.metric("Blended CPM",           f"\u20ac{avg_cpm:.2f}" if avg_cpm < 9999 else "—",
-               help="Cost per 1,000 estimated impressions across all influencer campaigns")
+    mk1, mk2, mk3 = st.columns(3)
+    mk1.metric("Total Spend",          f"\u20ac{total_spend_mkt:,.0f}")
+    mk2.metric("Campaigns",            f"{n_campaigns}")
+    mk3.metric("Avg Spend / Campaign", f"\u20ac{avg_spend_camp:,.0f}")
 
     st.markdown("<hr style='margin:8px 0 16px'>", unsafe_allow_html=True)
 
     if mkt_f.empty:
         st.info("No marketing data available.")
     else:
+        # ── Key insight callout ───────────────────────────────────────────────
+        if not mkt_f.empty and total_spend_mkt > 0:
+            _top_ch     = mkt_f.groupby("channel")["total_spend"].sum().idxmax()
+            _top_ch_pct = mkt_f.groupby("channel")["total_spend"].sum().max() / total_spend_mkt * 100
+            _top_mkt    = mkt_f.groupby("market")["total_spend"].sum().idxmax()
+            _top_mkt_pct = mkt_f.groupby("market")["total_spend"].sum().max() / total_spend_mkt * 100
+            _n_months   = mkt_f["start"].apply(lambda x: pd.to_datetime(x, errors="coerce")).dt.to_period("M").nunique()
+            _avg_mo     = total_spend_mkt / max(_n_months, 1)
+            st.markdown(
+                f"<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;"
+                f"border-radius:6px;margin-bottom:14px;font-size:13px;color:#3a2e24;line-height:1.9;'>"
+                f"📊 <b>Top channel:</b> {_top_ch} — {_top_ch_pct:.0f}% of total spend &nbsp;·&nbsp; "
+                f"🌍 <b>Top market:</b> {_top_mkt} — {_top_mkt_pct:.0f}% of budget &nbsp;·&nbsp; "
+                f"📅 <b>Avg monthly spend:</b> €{_avg_mo:,.0f} across {_n_months} active months"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
         # ── Row 1: Market split + Channel breakdown ───────────────────────────
         col_mkt_split, col_ch_bar = st.columns([0.38, 0.62])
 
@@ -1681,45 +1702,6 @@ with tab3:
             l_cum["legend"]["y"] = -0.30
             fig_cum.update_layout(**l_cum)
             st.plotly_chart(fig_cum, use_container_width=True)
-
-        # ── Campaign Timeline ─────────────────────────────────────────────────
-        st.markdown("<h2>Campaign Timeline</h2>", unsafe_allow_html=True)
-        mkt_gant = mkt_f.copy()
-        mkt_gant["start_dt"] = pd.to_datetime(mkt_gant["start"], errors="coerce")
-        mkt_gant = mkt_gant.dropna(subset=["start_dt"])
-        if not mkt_gant.empty:
-            ch_color_map = dict(zip(
-                mkt_gant["channel"].unique(),
-                ch_palette[:mkt_gant["channel"].nunique()]
-            ))
-            mkt_gant["_mkey"]  = mkt_gant["start_dt"].dt.to_period("M").astype(str)
-            mkt_gant["month"]  = mkt_gant["start_dt"].dt.strftime("%b %Y")
-            gantt_monthly = (mkt_gant.groupby(["_mkey","month","channel"])
-                             .agg(count=("name","count"), spend=("total_spend","sum"))
-                             .reset_index().sort_values("_mkey"))
-            fig_gantt = go.Figure()
-            for ch in gantt_monthly["channel"].unique():
-                d = gantt_monthly[gantt_monthly["channel"] == ch]
-                fig_gantt.add_trace(go.Scatter(
-                    x=d["month"], y=d["spend"],
-                    mode="lines+markers",
-                    name=ch,
-                    line=dict(color=ch_color_map.get(ch, BROWN), width=2),
-                    marker=dict(size=(d["count"] * 4).clip(upper=24),
-                                color=ch_color_map.get(ch, BROWN),
-                                line=dict(color=CREAM, width=1)),
-                    hovertemplate=(
-                        f"<b>{ch}</b><br>%{{x}}<br>"
-                        "Campaigns: %{marker.size:.0f}<br>"
-                        "Spend: \u20ac%{y:,.0f}<extra></extra>"
-                    ),
-                ))
-            l_gantt = base_layout("Monthly Spend Pulse by Channel  ·  bubble size = # campaigns", height=340)
-            l_gantt["yaxis"]["tickprefix"] = "\u20ac"
-            l_gantt["xaxis"]["tickangle"] = -35
-            l_gantt["legend"]["y"] = -0.22
-            fig_gantt.update_layout(**l_gantt)
-            st.plotly_chart(fig_gantt, use_container_width=True)
 
         # ── All campaigns table ───────────────────────────────────────────────
         st.markdown(
