@@ -1363,14 +1363,25 @@ with tab1:
     st.markdown("")
 
     if not demo_mode and not prim_f.empty:
-        _latest_inv  = prim_f["week"].max()
+        _latest_inv   = prim_f["week"].max()
         _earliest_inv = prim_f["week"].min()
-        _n_inv = len(prim_f)
-        st.caption(
-            f"📦 {_n_inv} invoice rows in selected period · "
-            f"{_earliest_inv.strftime('%d %b %Y') if pd.notna(_earliest_inv) else '?'}"
-            f" → {_latest_inv.strftime('%d %b %Y') if pd.notna(_latest_inv) else '?'} · "
-            "Dates are read correctly — primary sales contain January invoice batches only."
+        _latest_so    = so_df["week"].max() if not so_df.empty and "week" in so_df.columns else pd.NaT
+
+        _lag_note = ""
+        if pd.notna(_latest_so) and pd.notna(_latest_inv) and _latest_so > _latest_inv:
+            _lag_months = round((_latest_so - _latest_inv).days / 30.4)
+            _lag_note = (
+                f"  ·  ⚠️ **Sell-out data runs {_lag_months} month(s) ahead of sell-in** "
+                f"(sell-out up to {_latest_so.strftime('%b %Y')}, "
+                f"sell-in up to {_latest_inv.strftime('%b %Y')}) — "
+                "this is normal: invoices are entered after shipment."
+            )
+
+        st.info(
+            f"📦 **Sell-in:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
+            f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
+            f"  ·  🛒 **Sell-out:** up to {_latest_so.strftime('%b %Y') if pd.notna(_latest_so) else 'n/a'}"
+            + _lag_note
         )
 
     # ── Weekly sell-in trend + Sell-In vs Marketing Spend ────────────────────
