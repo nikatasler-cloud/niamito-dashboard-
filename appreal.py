@@ -1516,9 +1516,9 @@ with tab1:
                     hovertemplate=f"%{{x}}: %{{y:,}} {_fc_lbl} (projected)<extra></extra>",
                 ))
             _fc_total = int(_fc_act[_fc_y].sum() + _monthly_avg_fc * len(_fc_labels))
+            _fc_prefix = "€" if _fc_y == "revenue" else ""
             l_fc = base_layout(
-                f"2026 Monthly Sales + Forecast  ·  Full-year est: "
-                f"{'€' if _fc_y == 'revenue' else ''}{_fc_total:,}",
+                f"2026 Actuals + Forecast  ·  Full-year est: {_fc_prefix}{_fc_total:,}",
                 height=320,
             )
             l_fc["barmode"] = "group"
@@ -1529,6 +1529,12 @@ with tab1:
                 l_fc["yaxis"]["tickprefix"] = "\u20ac"
             fig_fc.update_layout(**l_fc)
             st.plotly_chart(fig_fc, use_container_width=True)
+            if _fc_labels:
+                st.caption(
+                    f"Forecast ({len(_fc_labels)} months) uses a flat monthly average "
+                    f"from {_n_actual_mo} actual month(s): {_fc_prefix}{_monthly_avg_fc:,.0f}/mo. "
+                    "No growth assumed — update monthly as actuals come in."
+                )
         else:
             st.info("No 2026 data yet — forecast will appear once 2026 invoices are loaded.")
 
@@ -1578,10 +1584,10 @@ with tab1:
 # TAB 2 · SECONDARY SALES
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("<h2>Secondary Sales — Retailer Sell-Out</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>Secondary Sales</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
-        "Units sold through to end consumers, reported by retail partners.</p>",
+        "Units sold through retail partners, reported by store.</p>",
         unsafe_allow_html=True,
     )
 
@@ -1620,7 +1626,7 @@ with tab2:
         _py_so_skus   = _py_so["sku_name"].nunique() if not _py_so.empty else 0
 
         so2_k1, so2_k2, so2_k3, so2_k4 = st.columns(4)
-        so2_k1.metric("Units Sold (sell-out)", f"{_so2_units:,}",
+        so2_k1.metric("Units Sold", f"{_so2_units:,}",
                       delta=_delta_str(_so2_units, _py_so_units) if _py_so_units else None,
                       help=f"Prior year same period: {_py_so_units:,} units" if _py_so_units else None)
         so2_k2.metric("Stores Reporting", f"{_so2_stores}",
@@ -1649,7 +1655,7 @@ with tab2:
                 textposition="outside",
                 hovertemplate="<b>%{y}</b><br>%{x:,} units<extra></extra>",
             ))
-            l_so2 = base_layout("Top 20 Stores by Units Sold", height=max(320, len(_store_rank2) * 24))
+            l_so2 = base_layout("Top 20 Stores", height=max(320, len(_store_rank2) * 24))
             l_so2["xaxis"]["title"] = "Units Sold"
             l_so2["margin"]["l"] = 220
             l_so2["margin"]["r"] = 60
@@ -1669,7 +1675,7 @@ with tab2:
                 textinfo="percent",
                 hovertemplate="<b>%{label}</b><br>%{value:,} units  (%{percent})<extra></extra>",
             ))
-            l_mix2 = base_layout("Sell-Out Mix by Product", height=320, legend_below=False)
+            l_mix2 = base_layout("Product Mix", height=320, legend_below=False)
             l_mix2["legend"] = dict(orientation="v", x=1.02, y=0.5,
                                     font=dict(size=9, color=BROWN), bgcolor="rgba(0,0,0,0)")
             fig_mix2.update_layout(**l_mix2)
@@ -1678,7 +1684,7 @@ with tab2:
         # All-stores table
         st.markdown(
             f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:8px 0 6px;'>"
-            "All Stores — Sell-Out Detail</p>",
+            "All Stores — Units Sold Detail</p>",
             unsafe_allow_html=True,
         )
         _store_tbl2 = (
@@ -1691,7 +1697,7 @@ with tab2:
         st.dataframe(_store_tbl2, use_container_width=True, hide_index=True)
 
     else:
-        st.info("No secondary sales data available. Upload a file with Secondary Sales sheet data.")
+        st.info("No secondary sales data available. Upload a file with a Secondary Sales sheet.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1996,10 +2002,31 @@ with tab4:
     trade_disc = p_data["trade_discount"].sum() if not p_data.empty else 0
     mkt_spend  = m_data["total_spend"].sum() if not m_data.empty else 0
 
+    # ── Filter expenses by product category ──────────────────────────────────
+    # Category → keyword in product_line column (expenses sheet)
+    _CAT_PL_KW = {
+        "Niamito Fresh Meal":         ["plain"],
+        "Niamito Oatmeal":            ["oat"],
+        "Niamito Meal in a Bottle":   ["470", "de", "bottle"],
+    }
+    if not exp_df.empty and category_filter and len(category_filter) < len(ALL_CATEGORIES):
+        _kws = [kw for cat in category_filter for kw in _CAT_PL_KW.get(cat, [])]
+        _pl_mask = exp_df["product_line"].str.lower().str.contains("|".join(_kws), na=False)
+        exp_df_pf = exp_df[_pl_mask]
+        # Scale the per-period allocation values by this category's revenue share
+        _full_2026_gross = (_prim_2026["gross_revenue"].sum()
+                            if not _prim_2026.empty else 1)
+        _cat_share = gross / max(_full_2026_gross, 1)
+        stock_val    = xl_stock_val    * _cat_share
+        promo_val    = xl_promo_val    * _cat_share
+        internal_val = xl_internal_val * _cat_share
+    else:
+        exp_df_pf = exp_df
+
     # Pull expense totals
-    prod_cost  = exp_df["production_cost"].sum() if not exp_df.empty else 0
-    logistics  = exp_df["logistics"].sum()        if not exp_df.empty else 0
-    mktg_promo = exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
+    prod_cost  = exp_df_pf["production_cost"].sum() if not exp_df_pf.empty else 0
+    logistics  = exp_df_pf["logistics"].sum()        if not exp_df_pf.empty else 0
+    mktg_promo = exp_df_pf["marketing_promo"].sum()  if not exp_df_pf.empty else 0
 
     # ── COGS allocation ───────────────────────────────────────────────────────
     # stock_val  → balance sheet asset (capitalized, NOT expensed this period)
