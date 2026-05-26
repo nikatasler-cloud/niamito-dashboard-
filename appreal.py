@@ -1285,9 +1285,6 @@ so_f    = so_df.copy()
 mkt_f   = mkt_df.copy()
 stock_f = stock_df.copy()
 
-# Snapshot before category filter — used in SKU Performance to show all products
-prim_f_nokcat = prim_f.copy()
-
 # ── Apply category filter ─────────────────────────────
 if category_filter and len(category_filter) < len(ALL_CATEGORIES):
     if "category" in prim_f.columns:
@@ -1320,6 +1317,9 @@ elif period == "Last 6 months":
     so_f    = so_f[so_f["week"] >= cutoff]
     stock_f = stock_f[stock_f["week"] >= cutoff]
 # "All data" → no filter
+
+# Snapshot after period filter but before category filter — SKU tab shows all categories
+prim_f_nokcat = prim_f.copy()
 
 # ── Apply period filter to marketing calendar ─────────────────────────────
 _mkt_start = pd.to_datetime(mkt_f["start"], errors="coerce") if not mkt_f.empty else pd.Series(dtype="datetime64[ns]")
@@ -1403,10 +1403,10 @@ with tab1:
             return None
         diff = curr - prev
         pct  = diff / prev * 100
-        sign = "+" if diff >= 0 else ""
+        sign = "+" if diff >= 0 else "-"
         if is_currency:
-            return f"{sign}€{abs(diff):,.0f}  ({sign}{pct:.1f}% vs prior yr)"
-        return f"{sign}{diff:,.0f}  ({sign}{pct:.1f}% vs prior yr)"
+            return f"{sign}€{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs prior yr)"
+        return f"{sign}{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs prior yr)"
 
     pieces_delta = _delta_str(prim_pieces, py_pieces)
     gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
@@ -1449,103 +1449,96 @@ with tab1:
             f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
         )
 
-    # ── Monthly sales by category + 2026 Forecast ────────────────────────────
-    col_trend, col_fc = st.columns([0.55, 0.45])
+    # ── Monthly sales by category (full width) ───────────────────────────────
+    if not prim_f.empty:
+        _pf_mo = prim_f.copy()
+        _pf_mo["_mkey"] = _pf_mo["week"].dt.to_period("M").astype(str)
+        _pf_mo["month"] = _pf_mo["week"].dt.strftime("%b %Y")
+        cat_monthly = _pf_mo.groupby(["_mkey", "month", "category"]).agg(
+            pieces=("bottles","sum"),
+            revenue=("gross_revenue","sum"),
+        ).reset_index().sort_values("_mkey")
+        y_col   = "pieces" if metric_mode == "Pieces sold" else "revenue"
+        y_label = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
+        fig_sw = go.Figure()
+        for cat in ALL_CATEGORIES:
+            d = cat_monthly[cat_monthly["category"] == cat]
+            if d.empty:
+                continue
+            fig_sw.add_trace(go.Bar(
+                x=d["month"], y=d[y_col],
+                name=cat,
+                marker_color=CATEGORY_COLORS.get(cat, BROWN),
+                hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
+            ))
+        l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=300)
+        l_sw["barmode"] = "stack"
+        l_sw["xaxis"]["tickangle"] = -30
+        if metric_mode != "Pieces sold":
+            l_sw["yaxis"]["tickprefix"] = "\u20ac"
+        fig_sw.update_layout(**l_sw)
+        st.plotly_chart(fig_sw, use_container_width=True)
+    else:
+        st.info("No primary sales data.")
 
-    with col_trend:
-        if not prim_f.empty:
-            _pf_mo = prim_f.copy()
-            _pf_mo["_mkey"] = _pf_mo["week"].dt.to_period("M").astype(str)
-            _pf_mo["month"] = _pf_mo["week"].dt.strftime("%b %Y")
-            cat_monthly = _pf_mo.groupby(["_mkey", "month", "category"]).agg(
-                pieces=("bottles","sum"),
-                revenue=("gross_revenue","sum"),
-            ).reset_index().sort_values("_mkey")
-            y_col   = "pieces" if metric_mode == "Pieces sold" else "revenue"
-            y_label = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
-            fig_sw = go.Figure()
-            for cat in ALL_CATEGORIES:
-                d = cat_monthly[cat_monthly["category"] == cat]
-                if d.empty:
-                    continue
-                fig_sw.add_trace(go.Bar(
-                    x=d["month"], y=d[y_col],
-                    name=cat,
-                    marker_color=CATEGORY_COLORS.get(cat, BROWN),
-                    hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
-                ))
-            l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=320)
-            l_sw["barmode"] = "stack"
-            l_sw["xaxis"]["tickangle"] = -30
-            if metric_mode != "Pieces sold":
-                l_sw["yaxis"]["tickprefix"] = "\u20ac"
-            fig_sw.update_layout(**l_sw)
-            st.plotly_chart(fig_sw, use_container_width=True)
-        else:
-            st.info("No primary sales data.")
+    # ── 2026 Forecast (full width) ────────────────────────────────────────────
+    _fc_y   = "pieces" if metric_mode == "Pieces sold" else "revenue"
+    _fc_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
 
-    with col_fc:
-        _fc_y   = "pieces" if metric_mode == "Pieces sold" else "revenue"
-        _fc_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
+    if not _pf_2026_all.empty and _n_actual_mo > 0:
+        _fc_act = (_pf_2026_all.copy()
+                   .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str),
+                           month=lambda d: d["week"].dt.strftime("%b %Y"))
+                   .groupby(["_mkey","month"]).agg(
+                       pieces=("bottles","sum"), revenue=("gross_revenue","sum"))
+                   .reset_index().sort_values("_mkey"))
 
-        if not _pf_2026_all.empty and _n_actual_mo > 0:
-            _fc_act = (_pf_2026_all.copy()
-                       .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str),
-                               month=lambda d: d["week"].dt.strftime("%b %Y"))
-                       .groupby(["_mkey","month"]).agg(
-                           pieces=("bottles","sum"), revenue=("gross_revenue","sum"))
-                       .reset_index().sort_values("_mkey"))
+        _actual_mkeys = set(_fc_act["_mkey"])
+        _all_2026_mkeys = [f"2026-{m:02d}" for m in range(1, 13)]
+        _fc_mkeys = [mk for mk in _all_2026_mkeys if mk not in _actual_mkeys]
+        _fc_labels = [pd.Period(mk).strftime("%b %Y") for mk in _fc_mkeys]
 
-            _actual_mkeys = set(_fc_act["_mkey"])
-            _all_2026_mkeys = [f"2026-{m:02d}" for m in range(1, 13)]
-            _fc_mkeys = [mk for mk in _all_2026_mkeys if mk not in _actual_mkeys]
-            _fc_labels = [pd.Period(mk).strftime("%b %Y") for mk in _fc_mkeys]
-            _monthly_avg_fc = _fc_act[_fc_y].mean()  # base for the first forecast month
-
-            # Growth rate slider
+        # Slider in a narrow column so it doesn't span the full page
+        _fc_sl_col, _ = st.columns([0.35, 0.65])
+        with _fc_sl_col:
             _growth_pct = st.slider(
                 "Monthly growth assumption (%)",
                 min_value=-10, max_value=30, value=5, step=1,
                 key="fc_growth_slider",
-                help="Applied month-over-month to the last actual month as the forecast base.",
+                help="Compounded month-over-month from the last actual month.",
             )
-            _growth_rate = _growth_pct / 100.0
+        _growth_rate = _growth_pct / 100.0
+        _last_actual = float(_fc_act[_fc_y].iloc[-1]) if not _fc_act.empty else 0.0
+        _fc_values = [_last_actual * ((1 + _growth_rate) ** (i + 1)) for i in range(len(_fc_labels))]
 
-            # Last actual value as the compounding base
-            _last_actual = float(_fc_act[_fc_y].iloc[-1]) if not _fc_act.empty else _monthly_avg_fc
-            _fc_values = [
-                _last_actual * ((1 + _growth_rate) ** (i + 1))
-                for i in range(len(_fc_labels))
-            ]
+        _fc_prefix = "€" if _fc_y == "revenue" else ""
+        _fc_total  = _fc_act[_fc_y].sum() + sum(_fc_values)
 
-            fig_fc = go.Figure()
+        fig_fc = go.Figure()
+        fig_fc.add_trace(go.Bar(
+            x=_fc_act["month"], y=_fc_act[_fc_y],
+            name="Actual", marker_color=BROWN, opacity=0.92,
+            hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (actual)<extra></extra>",
+        ))
+        if _fc_labels:
             fig_fc.add_trace(go.Bar(
-                x=_fc_act["month"], y=_fc_act[_fc_y],
-                name="Actual", marker_color=BROWN, opacity=0.9,
-                hovertemplate=f"%{{x}}: %{{y:,}} {_fc_lbl} (actual)<extra></extra>",
+                x=_fc_labels, y=_fc_values,
+                name=f"Forecast ({'+' if _growth_pct >= 0 else ''}{_growth_pct}%/mo)",
+                marker_color=LAVEN, opacity=0.65,
+                hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (projected)<extra></extra>",
             ))
-            if _fc_labels:
-                fig_fc.add_trace(go.Bar(
-                    x=_fc_labels, y=_fc_values,
-                    name=f"Forecast (+{_growth_pct}%/mo)", marker_color=LAVEN, opacity=0.6,
-                    hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (projected)<extra></extra>",
-                ))
-            _fc_prefix = "€" if _fc_y == "revenue" else ""
-            _fc_total = _fc_act[_fc_y].sum() + sum(_fc_values)
-            l_fc = base_layout(
-                f"2026 Actuals + Forecast  ·  Full-year est: {_fc_prefix}{int(_fc_total):,}",
-                height=300,
-            )
-            l_fc["barmode"] = "group"
-            l_fc["xaxis"]["tickangle"] = -30
-            l_fc["legend"]["orientation"] = "h"
-            l_fc["legend"]["y"] = -0.25
-            if _fc_y == "revenue":
-                l_fc["yaxis"]["tickprefix"] = "\u20ac"
-            fig_fc.update_layout(**l_fc)
-            st.plotly_chart(fig_fc, use_container_width=True)
-        else:
-            st.info("No 2026 data yet — forecast will appear once 2026 invoices are loaded.")
+        l_fc = base_layout(
+            f"2026 Actuals + Forecast  ·  Full-year estimate: {_fc_prefix}{int(_fc_total):,}",
+            height=280,
+        )
+        l_fc["barmode"] = "overlay"
+        l_fc["xaxis"]["tickangle"] = -30
+        l_fc["legend"]["orientation"] = "h"
+        l_fc["legend"]["y"] = -0.28
+        if _fc_y == "revenue":
+            l_fc["yaxis"]["tickprefix"] = "\u20ac"
+        fig_fc.update_layout(**l_fc)
+        st.plotly_chart(fig_fc, use_container_width=True)
 
     # ── Monthly performance table ─────────────────────────────────────────────
     if not prim_f.empty:
@@ -2050,10 +2043,6 @@ with tab4:
         "Line": wf_labels,
         "Amount (\u20ac)": [f"\u20ac{abs(v):,.0f}" for v in wf_values],
         "% of Gross":  [f"{abs(v)/max(gross,1)*100:.1f}%" for v in wf_values],
-        "Cumulative (\u20ac)": [
-            f"\u20ac{(gross + sum(wf_values[1:i+1])):,.0f}" if i > 0 else f"\u20ac{gross:,.0f}"
-            for i in range(len(wf_values))
-        ],
     })
     st.dataframe(wf_tbl, use_container_width=True, hide_index=True)
 
