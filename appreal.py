@@ -1143,6 +1143,7 @@ with st.sidebar:
         "View as",
         options=["Pieces sold", "Revenue (€)"],
         index=0,
+        key="metric_mode",
     )
 
 
@@ -1281,8 +1282,9 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # ──────────────────────────────────────────────────────────────────────────────
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Overview",
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Primary Sales",
+    "Secondary Sales",
     "Marketing",
     "Profitability",
     "SKU Performance",
@@ -1295,98 +1297,27 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
 
     # ── KPI calculations ─────────────────────────────────────────────────────
-    total_mkt_spd = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
     total_gross   = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
     total_net_rev = prim_f["net_revenue"].sum() if not prim_f.empty else 0
     prim_pieces   = prim_f["bottles"].sum() if not prim_f.empty else 0
-    rev_per_mkt   = total_gross / max(total_mkt_spd, 1)
-
-    # ── YoY comparison: same period last year ────────────────────────────────
-    def _prior_year_prim(pf_full, period_name, jan1_ty, today_ts, custom_range_val):
-        """Return prim_df filtered to the same calendar window one year earlier."""
-        if period_name == "This year (YTD)":
-            py_start = jan1_ty - pd.DateOffset(years=1)
-            py_end   = today_ts - pd.DateOffset(years=1)
-        elif period_name == "Last 3 months":
-            py_start = today_ts - pd.DateOffset(months=3) - pd.DateOffset(years=1)
-            py_end   = today_ts - pd.DateOffset(years=1)
-        elif period_name == "Last 6 months":
-            py_start = today_ts - pd.DateOffset(months=6) - pd.DateOffset(years=1)
-            py_end   = today_ts - pd.DateOffset(years=1)
-        elif period_name == "Custom range" and custom_range_val and len(custom_range_val) == 2:
-            py_start = pd.Timestamp(custom_range_val[0]) - pd.DateOffset(years=1)
-            py_end   = pd.Timestamp(custom_range_val[1]) - pd.DateOffset(years=1)
-        else:
-            return pd.DataFrame()
-        if pf_full.empty:
-            return pd.DataFrame()
-        return pf_full[(pf_full["week"] >= py_start) & (pf_full["week"] <= py_end)]
-
-    py_df    = _prior_year_prim(prim_df, period, jan1_this_year, today, custom_range if period == "Custom range" else None)
-    py_pieces = py_df["bottles"].sum() if not py_df.empty else 0
-    py_gross  = py_df["gross_revenue"].sum() if not py_df.empty else 0
-
-    def _delta_str(curr, prev, prefix="", suffix="", is_currency=False):
-        if prev == 0:
-            return None
-        diff = curr - prev
-        pct  = diff / prev * 100
-        sign = "+" if diff >= 0 else ""
-        if is_currency:
-            return f"{sign}€{abs(diff):,.0f}  ({sign}{pct:.1f}% vs prior yr)"
-        return f"{sign}{diff:,.0f}  ({sign}{pct:.1f}% vs prior yr)"
-
-    pieces_delta = _delta_str(prim_pieces, py_pieces)
-    gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
+    avg_price_pc  = total_gross / max(prim_pieces, 1)
 
     # ── KPI row ───────────────────────────────────────────────────────────────
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric(
-        "Primary Pieces Sold",
-        f"{prim_pieces:,.0f}",
-        delta=pieces_delta,
-        help=f"Prior year same period: {py_pieces:,.0f} pcs" if py_pieces else "No prior-year data for this period",
-    )
-    k2.metric(
-        "Gross Revenue",
-        f"€{total_gross:,.0f}",
-        delta=gross_delta,
-        help=f"Prior year same period: €{py_gross:,.0f}" if py_gross else "No prior-year data for this period",
-    )
-    k3.metric(
-        "Net Revenue",
-        f"€{total_net_rev:,.0f}",
-        help="Gross revenue after trade discounts.",
-    )
-    k4.metric("Marketing Spend", f"€{total_mkt_spd:,.0f}")
-    k5.metric(
-        "Rev per € Marketing",
-        f"€{rev_per_mkt:,.2f}",
-        help="Gross revenue ÷ marketing spend. Higher = better ROI.",
-    )
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Pieces Sold (sell-in)", f"{prim_pieces:,.0f}")
+    k2.metric("Gross Revenue",         f"€{total_gross:,.0f}")
+    k3.metric("Net Revenue",           f"€{total_net_rev:,.0f}",
+              help="Gross revenue after trade discounts.")
+    k4.metric("Avg Price / Piece",     f"€{avg_price_pc:.2f}")
 
     st.markdown("")
 
     if not demo_mode and not prim_f.empty:
         _latest_inv   = prim_f["week"].max()
         _earliest_inv = prim_f["week"].min()
-        _latest_so    = so_df["week"].max() if not so_df.empty and "week" in so_df.columns else pd.NaT
-
-        _lag_note = ""
-        if pd.notna(_latest_so) and pd.notna(_latest_inv) and _latest_so > _latest_inv:
-            _lag_months = round((_latest_so - _latest_inv).days / 30.4)
-            _lag_note = (
-                f"  ·  ⚠️ **Sell-out data runs {_lag_months} month(s) ahead of sell-in** "
-                f"(sell-out up to {_latest_so.strftime('%b %Y')}, "
-                f"sell-in up to {_latest_inv.strftime('%b %Y')}) — "
-                "this is normal: invoices are entered after shipment."
-            )
-
         st.info(
-            f"📦 **Sell-in:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
+            f"📦 **Sell-in data:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
             f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
-            f"  ·  🛒 **Sell-out:** up to {_latest_so.strftime('%b %Y') if pd.notna(_latest_so) else 'n/a'}"
-            + _lag_note
         )
 
     # ── Weekly sell-in trend + Sell-In vs Marketing Spend ────────────────────
@@ -1500,9 +1431,130 @@ with tab1:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 · MARKETING
+# TAB 2 · SECONDARY SALES
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
+    st.markdown("<h2>Secondary Sales — Distributor to Retail</h2>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
+        "Sell-out reported by retailers via the Sell-out Template. "
+        "Units sold at the shelf, downstream of primary sell-in.</p>",
+        unsafe_allow_html=True,
+    )
+
+    if not so_f.empty and "retailer" in so_f.columns:
+        _so = so_f.copy()
+        _total_so_units  = int(_so["bottles_sold"].sum())
+        _n_stores_so     = _so["retailer"].nunique()
+        _n_skus_so       = _so["sku_name"].nunique()
+        _n_markets_so    = _so["market"].nunique() if "market" in _so.columns else 0
+        _top_store_name  = _so.groupby("retailer")["bottles_sold"].sum().idxmax()
+        _top_store_units = int(_so.groupby("retailer")["bottles_sold"].sum().max())
+
+        so_k1, so_k2, so_k3, so_k4 = st.columns(4)
+        so_k1.metric("Total Units Sold",  f"{_total_so_units:,}")
+        so_k2.metric("Stores Reporting",  f"{_n_stores_so}")
+        so_k3.metric("SKUs Tracked",      f"{_n_skus_so}")
+        so_k4.metric("Top Store",         _top_store_name,
+                     delta=f"{_top_store_units:,} units",
+                     help="Store with highest sell-out volume in selected period")
+
+        st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+
+        col_so_bar, col_so_mix = st.columns([0.60, 0.40])
+
+        with col_so_bar:
+            _store_rank = (
+                _so.groupby("retailer")["bottles_sold"].sum()
+                .reset_index()
+                .sort_values("bottles_sold", ascending=True)
+                .tail(20)
+            )
+            _so_colors = [BROWN if i % 2 == 0 else LAVEN for i in range(len(_store_rank))]
+            fig_so_bar = go.Figure(go.Bar(
+                x=_store_rank["bottles_sold"],
+                y=_store_rank["retailer"],
+                orientation="h",
+                marker=dict(color=_so_colors, line=dict(color=CREAM, width=0.5)),
+                text=[f"{int(v):,}" for v in _store_rank["bottles_sold"]],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>%{x:,} units<extra></extra>",
+            ))
+            l_so_bar = base_layout("Top 20 Stores by Units Sold", height=max(340, len(_store_rank) * 24))
+            l_so_bar["xaxis"]["title"] = "Units Sold"
+            l_so_bar["margin"]["l"] = 220
+            l_so_bar["margin"]["r"] = 60
+            fig_so_bar.update_layout(**l_so_bar)
+            st.plotly_chart(fig_so_bar, use_container_width=True)
+
+        with col_so_mix:
+            _cat_so = (
+                _so.groupby("sku_name")["bottles_sold"].sum()
+                .reset_index()
+                .sort_values("bottles_sold", ascending=False)
+            )
+            _cat_so_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _cat_so["sku_name"]]
+            fig_so_mix = go.Figure(go.Pie(
+                labels=_cat_so["sku_name"],
+                values=_cat_so["bottles_sold"],
+                hole=0.50,
+                marker=dict(colors=_cat_so_colors, line=dict(color=CREAM, width=2)),
+                textinfo="percent",
+                hovertemplate="<b>%{label}</b><br>%{value:,} units  (%{percent})<extra></extra>",
+            ))
+            l_so_mix = base_layout("Sell-Out Mix by Product", height=340, legend_below=False)
+            l_so_mix["legend"] = dict(
+                orientation="v", x=1.02, y=0.5,
+                font=dict(size=9, color=BROWN),
+                bgcolor="rgba(0,0,0,0)",
+            )
+            fig_so_mix.update_layout(**l_so_mix)
+            st.plotly_chart(fig_so_mix, use_container_width=True)
+
+        # Market breakdown (only if multi-market)
+        if "market" in _so.columns and _so["market"].nunique() > 1:
+            _mkt_so = (
+                _so.groupby("market")["bottles_sold"].sum()
+                .reset_index().sort_values("bottles_sold", ascending=False)
+            )
+            _mkt_so_colors = [MARKET_COLORS.get(m, BROWN) for m in _mkt_so["market"]]
+            col_sm1, _ = st.columns([0.35, 0.65])
+            with col_sm1:
+                fig_mkt_so = go.Figure(go.Bar(
+                    x=_mkt_so["market"], y=_mkt_so["bottles_sold"],
+                    marker=dict(color=_mkt_so_colors),
+                    text=[f"{int(v):,}" for v in _mkt_so["bottles_sold"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>%{y:,} units<extra></extra>",
+                ))
+                l_mkt_so = base_layout("Units by Market", height=280)
+                fig_mkt_so.update_layout(**l_mkt_so)
+                st.plotly_chart(fig_mkt_so, use_container_width=True)
+
+        # All-stores table
+        st.markdown(
+            f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:4px 0 6px;'>"
+            "All Stores — Sell-Out Detail</p>",
+            unsafe_allow_html=True,
+        )
+        _store_tbl = (
+            _so.groupby(["retailer", "market"] if "market" in _so.columns else ["retailer"])
+            .agg(units=("bottles_sold","sum"), skus=("sku_name","nunique"))
+            .reset_index()
+            .sort_values("units", ascending=False)
+            .rename(columns={"retailer":"Store","market":"Market","units":"Units Sold","skus":"SKUs"})
+        )
+        _store_tbl["Units Sold"] = _store_tbl["Units Sold"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(_store_tbl, use_container_width=True, hide_index=True)
+
+    else:
+        st.info("No sell-out data available. Upload a Master Tables file with Secondary Sales data.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 · MARKETING
+# ══════════════════════════════════════════════════════════════════════════════
+with tab3:
     ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
 
     # ── KPI row ───────────────────────────────────────────────────────────────
@@ -1695,9 +1747,9 @@ with tab2:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 · VALUE LEAKAGE WATERFALL
+# TAB 4 · PROFITABILITY
 # ══════════════════════════════════════════════════════════════════════════════
-with tab3:
+with tab4:
     st.markdown("<h2>Profitability — From Revenue to Gross Margin</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px; color:{MID};'>"
@@ -1953,9 +2005,9 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 · SKU PERFORMANCE
+# TAB 5 · SKU PERFORMANCE
 # ══════════════════════════════════════════════════════════════════════════════
-with tab4:
+with tab5:
 
     # ────────────────────────────────────────────────────────────────────────
     # SECTION A: Primary Sell-In
