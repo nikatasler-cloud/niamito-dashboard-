@@ -1003,12 +1003,40 @@ def load_excel(file):
 
     # ── Expenses → exp_df + stock/promo from Excel ───────────────────────────
     exp_rows = []
-    _xl_stock_val    = 0.0  # Active stock value (€) — read from Excel Cost Allocation section
-    _xl_promo_val    = 0.0  # Promo & External cost (€)
-    _xl_internal_val = 0.0  # Internal Consumption cost (€)
-    # Column that holds the Amount (€) in the allocation section is the same position as "Month"
-    # in the expense data rows (3rd column, index 2).
-    _amt_col = None  # resolved below once columns are known
+    # ── Read Cost Allocation section directly from worksheet (own column layout) ─
+    # Structure: section header → instruction → col headers (Month|Stock|Promo|Internal) → 12 month rows
+    _ALLOC_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    # Per-month dicts; summed for waterfall totals, kept for future monthly charts
+    _alloc = {m: {"stock": 0.0, "promo": 0.0, "internal": 0.0} for m in _ALLOC_MONTHS}
+    _xl_stock_val = _xl_promo_val = _xl_internal_val = 0.0
+
+    _ws_exp = None
+    for _sn in _wb.sheetnames:
+        if "expense" in _sn.lower():
+            _ws_exp = _wb[_sn]; break
+
+    if _ws_exp is not None:
+        # Find section header row by scanning col A for "COST ALLOCATION"
+        _sec_row = None
+        for _r in _ws_exp.iter_rows(min_col=1, max_col=1, values_only=False):
+            _v = _cell_val(_r[0].value)
+            if _v and "COST ALLOCATION" in str(_v).upper():
+                _sec_row = _r[0].row; break
+        if _sec_row is not None:
+            # Sub-header is 2 rows below section header, data starts 3 rows below
+            _data_start = _sec_row + 3
+            for _ri in range(_data_start, _data_start + 12):
+                _mo = _cell_val(_ws_exp.cell(_ri, 1).value)
+                if _mo not in _ALLOC_MONTHS:
+                    break
+                _alloc[_mo]["stock"]    = to_float(_cell_val(_ws_exp.cell(_ri, 2).value))
+                _alloc[_mo]["promo"]    = to_float(_cell_val(_ws_exp.cell(_ri, 3).value))
+                _alloc[_mo]["internal"] = to_float(_cell_val(_ws_exp.cell(_ri, 4).value))
+            _xl_stock_val    = sum(v["stock"]    for v in _alloc.values())
+            _xl_promo_val    = sum(v["promo"]    for v in _alloc.values())
+            _xl_internal_val = sum(v["internal"] for v in _alloc.values())
+
+    # ── Parse expense data rows (skip allocation section) ────────────────────
     if exp_raw is not None:
         pl_col   = next((c for c in exp_raw.columns if "Product Line" in c), None)
         sku_col_e= next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
@@ -1018,26 +1046,14 @@ def load_excel(file):
         mktg_col = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
         if mktg_col is None:
             mktg_col = next((c for c in exp_raw.columns if "Marketing" in c), None)
-        # The Amount (€) column in the allocation section aligns with the 3rd data column
-        _amt_col = mon_col  # both sit in the same column position (col C / index 2)
+        _SKIP_PREFIXES = ("📦", "COST ALLOCATION", "Enter ", "Month", "Active", "Promo &", "Internal")
         for _, r in exp_raw.iterrows():
             pl_val = r.get(pl_col)
             if pl_val is None or (isinstance(pl_val, float) and pd.isna(pl_val)):
                 continue
             pl_str = str(pl_val).strip()
-            # ── Cost Allocation section rows ──────────────────────────────────
-            if pl_str == "Active Stock":
-                _xl_stock_val = to_float(r.get(_amt_col))
-                continue
-            if pl_str == "Promo & External":
-                _xl_promo_val = to_float(r.get(_amt_col))
-                continue
-            if pl_str == "Internal Consumption":
-                _xl_internal_val = to_float(r.get(_amt_col))
-                continue
-            # Skip section header, note, and label rows
-            if (pl_str.startswith("📦") or pl_str.startswith("COST ALLOCATION")
-                    or pl_str == "Type" or pl_str.startswith("Enter ") or pl_str.startswith("Value of")):
+            # Skip allocation section rows (header, note, column labels, month rows)
+            if pl_str.startswith(_SKIP_PREFIXES) or pl_str in _ALLOC_MONTHS:
                 continue
             exp_rows.append({
                 "product_line":    pl_str,
