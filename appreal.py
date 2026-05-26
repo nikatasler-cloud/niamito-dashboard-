@@ -1498,304 +1498,256 @@ with tab1:
 # TAB 2 · MARKETING
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
+    ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
+
     # ── KPI row ───────────────────────────────────────────────────────────────
-    total_spend_mkt   = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
-    n_campaigns       = len(mkt_f) if not mkt_f.empty else 0
-    top_channel       = (mkt_f.groupby("channel")["total_spend"].sum().idxmax()
-                         if not mkt_f.empty and mkt_f["total_spend"].sum() > 0 else "—")
-    n_influencers     = mkt_f["influencer"].notna().sum() if not mkt_f.empty and "influencer" in mkt_f.columns else 0
-    avg_cpm           = total_spend_mkt / max(
-        mkt_f["reach"].sum() if not mkt_f.empty and "reach" in mkt_f.columns else 0, 1
-    ) * 1000
+    total_spend_mkt = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
+    n_campaigns     = len(mkt_f) if not mkt_f.empty else 0
+    n_influencers   = mkt_f["influencer"].notna().sum() if not mkt_f.empty and "influencer" in mkt_f.columns else 0
+    total_reach     = int(mkt_f["reach"].fillna(0).sum()) if not mkt_f.empty and "reach" in mkt_f.columns else 0
+    avg_cpm         = total_spend_mkt / max(total_reach, 1) * 1000
+    avg_spend_camp  = total_spend_mkt / max(n_campaigns, 1)
 
     mk1, mk2, mk3, mk4, mk5 = st.columns(5)
-    mk1.metric("Total Marketing Spend", f"\u20ac{total_spend_mkt:,.0f}")
-    mk2.metric("Campaigns Tracked",     f"{n_campaigns}")
-    mk3.metric("Top Channel",           top_channel)
-    mk4.metric("Influencer Activations", f"{n_influencers}")
-    mk5.metric("Est. CPM",              f"\u20ac{avg_cpm:.2f}" if avg_cpm < 1000 else "—",
-               help="Cost per 1,000 estimated impressions (influencer reach only)")
+    mk1.metric("Total Spend",           f"\u20ac{total_spend_mkt:,.0f}")
+    mk2.metric("Campaigns",             f"{n_campaigns}")
+    mk3.metric("Avg Spend / Campaign",  f"\u20ac{avg_spend_camp:,.0f}")
+    mk4.metric("Influencer Reach",      f"{total_reach:,}" if total_reach else "—",
+               help="Sum of estimated reach across all influencer activations")
+    mk5.metric("Blended CPM",           f"\u20ac{avg_cpm:.2f}" if avg_cpm < 9999 else "—",
+               help="Cost per 1,000 estimated impressions across all influencer campaigns")
 
     st.markdown("<hr style='margin:8px 0 16px'>", unsafe_allow_html=True)
 
     if mkt_f.empty:
         st.info("No marketing data available.")
     else:
-        # ── Row 1: Spend by channel + Monthly spend trend ─────────────────────
-        col_ch, col_mo = st.columns(2)
+        # ── Row 1: Market split + Channel breakdown ───────────────────────────
+        col_mkt_split, col_ch_bar = st.columns([0.38, 0.62])
 
-        with col_ch:
-            ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
-            ch_spend = ch_spend[ch_spend["total_spend"] > 0].sort_values("total_spend", ascending=True)
-            ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
+        with col_mkt_split:
+            _mkt_spend = (mkt_f.groupby("market")["total_spend"].sum()
+                          .reset_index().sort_values("total_spend", ascending=False))
+            _mkt_colors = [MARKET_COLORS.get(m, BROWN) for m in _mkt_spend["market"]]
+            fig_mkt_split = go.Figure(go.Pie(
+                labels=_mkt_spend["market"],
+                values=_mkt_spend["total_spend"],
+                hole=0.52,
+                marker=dict(colors=_mkt_colors, line=dict(color=CREAM, width=3)),
+                textinfo="label+percent",
+                hovertemplate="<b>%{label}</b><br>\u20ac%{value:,.0f}  (%{percent})<extra></extra>",
+            ))
+            l_mkt_split = base_layout("Budget by Market", height=300, legend_below=False)
+            l_mkt_split["showlegend"] = False
+            fig_mkt_split.update_layout(**l_mkt_split)
+            st.plotly_chart(fig_mkt_split, use_container_width=True)
+
+        with col_ch_bar:
+            ch_spend = mkt_f.groupby("channel").agg(
+                spend=("total_spend","sum"),
+                n=("id","count"),
+            ).reset_index()
+            ch_spend = ch_spend[ch_spend["spend"] > 0].sort_values("spend", ascending=True)
             fig_ch = go.Figure(go.Bar(
-                x=ch_spend["total_spend"],
+                x=ch_spend["spend"],
                 y=ch_spend["channel"],
                 orientation="h",
                 marker=dict(color=ch_palette[:len(ch_spend)],
-                            line=dict(color=CREAM, width=1)),
-                text=[f"\u20ac{v:,.0f}" for v in ch_spend["total_spend"]],
+                            line=dict(color=CREAM, width=0.8)),
+                text=[f"\u20ac{v:,.0f}  ·  {int(n)} campaign{'s' if n!=1 else ''}"
+                      for v, n in zip(ch_spend["spend"], ch_spend["n"])],
                 textposition="outside",
                 hovertemplate="<b>%{y}</b><br>\u20ac%{x:,.0f}<extra></extra>",
             ))
-            l_ch = base_layout("Spend by Channel", height=300)
+            l_ch = base_layout("Spend & Campaigns by Channel", height=300)
             l_ch["xaxis"]["tickprefix"] = "\u20ac"
-            l_ch["margin"]["l"] = 130
+            l_ch["margin"]["l"] = 120
+            l_ch["margin"]["r"] = 180
             fig_ch.update_layout(**l_ch)
             st.plotly_chart(fig_ch, use_container_width=True)
 
-        with col_mo:
-            mkt_f2 = mkt_f.copy()
-            mkt_f2["month_dt"] = pd.to_datetime(mkt_f2["start"], errors="coerce").dt.to_period("M")
-            monthly = mkt_f2.groupby(["month_dt","channel"])["total_spend"].sum().reset_index()
-            monthly["month_str"] = monthly["month_dt"].astype(str)
-            monthly = monthly.sort_values("month_str")
+        # ── Row 2: Monthly spend (stacked) + Cumulative burn curve ────────────
+        col_monthly, col_cum = st.columns(2)
 
+        _mk_mo = mkt_f.copy()
+        _mk_mo["_mkey"] = pd.to_datetime(_mk_mo["start"], errors="coerce").dt.to_period("M").astype(str)
+        _mk_mo["month"] = pd.to_datetime(_mk_mo["start"], errors="coerce").dt.strftime("%b %Y")
+        _monthly_ch = (_mk_mo.groupby(["_mkey","month","channel"])["total_spend"]
+                       .sum().reset_index().sort_values("_mkey"))
+        _monthly_tot = (_mk_mo.groupby(["_mkey","month"])["total_spend"]
+                        .sum().reset_index().sort_values("_mkey"))
+        _monthly_tot["cumulative"] = _monthly_tot["total_spend"].cumsum()
+
+        with col_monthly:
             fig_mo = go.Figure()
-            for idx, ch in enumerate(monthly["channel"].unique()):
-                d = monthly[monthly["channel"] == ch]
+            for idx, ch in enumerate(_monthly_ch["channel"].unique()):
+                d = _monthly_ch[_monthly_ch["channel"] == ch]
                 fig_mo.add_trace(go.Bar(
-                    x=d["month_str"], y=d["total_spend"],
+                    x=d["month"], y=d["total_spend"],
                     name=ch,
                     marker_color=ch_palette[idx % len(ch_palette)],
                     hovertemplate=f"<b>{ch}</b><br>%{{x}}<br>\u20ac%{{y:,.0f}}<extra></extra>",
                 ))
-            l_mo = base_layout("Monthly Spend by Channel", height=300)
+            l_mo = base_layout("Monthly Spend by Channel", height=320)
             l_mo["barmode"] = "stack"
             l_mo["yaxis"]["tickprefix"] = "\u20ac"
-            l_mo["xaxis"]["tickangle"] = -30
+            l_mo["xaxis"]["tickangle"] = -35
+            l_mo["legend"]["y"] = -0.30
             fig_mo.update_layout(**l_mo)
             st.plotly_chart(fig_mo, use_container_width=True)
 
-        # ── Row 2: Channel mix donut + Campaign count heatmap ─────────────────
-        col_donut, col_heat = st.columns(2)
-
-        with col_donut:
-            fig_donut = go.Figure(go.Pie(
-                labels=ch_spend["channel"],
-                values=ch_spend["total_spend"],
-                hole=0.55,
-                marker=dict(colors=ch_palette[:len(ch_spend)],
-                            line=dict(color=CREAM, width=2)),
-                textinfo="percent+label",
-                hovertemplate="<b>%{label}</b><br>\u20ac%{value:,.0f}  (%{percent})<extra></extra>",
+        with col_cum:
+            fig_cum = go.Figure()
+            fig_cum.add_trace(go.Bar(
+                x=_monthly_tot["month"], y=_monthly_tot["total_spend"],
+                name="Monthly spend",
+                marker_color=LAVEN, opacity=0.7,
+                hovertemplate="%{x}<br>\u20ac%{y:,.0f}<extra></extra>",
             ))
-            l_donut = base_layout("Spend Mix", height=300, legend_below=False)
-            l_donut["showlegend"] = False
-            fig_donut.update_layout(**l_donut)
-            st.plotly_chart(fig_donut, use_container_width=True)
+            fig_cum.add_trace(go.Scatter(
+                x=_monthly_tot["month"], y=_monthly_tot["cumulative"],
+                name="Cumulative",
+                mode="lines+markers",
+                line=dict(color=BROWN, width=2.5),
+                marker=dict(size=6, color=BROWN),
+                yaxis="y2",
+                hovertemplate="%{x}<br>Cumulative: \u20ac%{y:,.0f}<extra></extra>",
+            ))
+            l_cum = base_layout("Budget Burn Rate (cumulative)", height=320)
+            l_cum["yaxis"]["tickprefix"] = "\u20ac"
+            l_cum["yaxis2"] = dict(
+                overlaying="y", side="right", showgrid=False,
+                tickprefix="\u20ac",
+                tickfont=dict(color=BROWN, size=10),
+            )
+            l_cum["xaxis"]["tickangle"] = -35
+            l_cum["legend"]["y"] = -0.30
+            fig_cum.update_layout(**l_cum)
+            st.plotly_chart(fig_cum, use_container_width=True)
 
-        with col_heat:
-            # Channel summary: spend + campaign count, sorted by spend
-            _ch_sum = mkt_f.groupby("channel").agg(
-                spend=("total_spend","sum"),
-                campaigns=("id","count"),
-            ).reset_index().sort_values("spend", ascending=True)
-            if not _ch_sum.empty:
-                _ch_colors_h = [ch_palette[i % len(ch_palette)] for i in range(len(_ch_sum))]
-                fig_ch_sum = go.Figure()
-                fig_ch_sum.add_trace(go.Bar(
-                    y=_ch_sum["channel"],
-                    x=_ch_sum["spend"],
-                    orientation="h",
-                    marker_color=_ch_colors_h,
-                    text=[f"€{v:,.0f}  ({int(c)} campaign{'s' if c!=1 else ''})"
-                          for v, c in zip(_ch_sum["spend"], _ch_sum["campaigns"])],
-                    textposition="outside",
-                    hovertemplate="<b>%{y}</b><br>Spend: €%{x:,.0f}<extra></extra>",
-                ))
-                l_ch_sum = base_layout("Budget & Campaigns by Channel", height=300)
-                l_ch_sum["xaxis"]["tickprefix"] = "€"
-                l_ch_sum["margin"]["r"] = 160
-                fig_ch_sum.update_layout(**l_ch_sum)
-                st.plotly_chart(fig_ch_sum, use_container_width=True)
-
-        # ── Influencer tracker ────────────────────────────────────────────────
+        # ── Influencer CPM ranking ────────────────────────────────────────────
         if "influencer" in mkt_f.columns:
             inf_df = mkt_f[mkt_f["influencer"].notna()].copy()
             if not inf_df.empty:
-                st.markdown("<h2>Influencer Activations</h2>", unsafe_allow_html=True)
+                st.markdown("<h2>Influencer Performance</h2>", unsafe_allow_html=True)
                 st.markdown(
-                    f"<p style='font-size:11px;color:{MID};margin-top:-8px;'>"
-                    f"{len(inf_df)} activation(s) logged · "
-                    f"Add influencer handles in column K of the Marketing Calendar to track more.</p>",
+                    f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
+                    f"{len(inf_df)} activations · sorted by CPM (lower = more efficient reach)</p>",
                     unsafe_allow_html=True,
                 )
-                max_cols = min(len(inf_df), 4)
-                rows_needed = (len(inf_df) + max_cols - 1) // max_cols
-                for row_i in range(rows_needed):
-                    row_data = inf_df.iloc[row_i*max_cols:(row_i+1)*max_cols]
-                    cols_inf = st.columns(len(row_data))
-                    for i, (_, row) in enumerate(row_data.iterrows()):
-                        with cols_inf[i]:
-                            _reach_raw = row.get("reach")
-                            reach = 0 if (_reach_raw is None or (isinstance(_reach_raw, float) and pd.isna(_reach_raw))) else float(_reach_raw)
-                            cpm      = round(row["media_spend"] / max(reach, 1) * 1000, 2) if reach else 0
-                            roas_val = row.get("roas")
-                            roas_str = f"{roas_val:.1f}\u00d7" if pd.notna(roas_val) else "pending"
-                            roas_col = GREEN if (pd.notna(roas_val) and roas_val >= 2) else (YELLOW if pd.notna(roas_val) else MID)
-                            reach_str = f"{int(reach):,}" if reach else "—"
-                            spend = row["media_spend"]
-                            # Colour band based on spend size
-                            border_col = BROWN if spend > 500 else LAVEN
-                            st.markdown(f"""
-                            <div style='background:{CREAM}; border-left:4px solid {border_col};
-                                        border-radius:10px; padding:12px 14px; margin-bottom:8px;
-                                        box-shadow:0 1px 4px rgba(0,0,0,0.07);'>
-                                <p style='font-size:13px; font-weight:700; margin:0 0 2px; color:{BROWN};'>
-                                    {row["influencer"]}</p>
-                                <p style='font-size:10px; color:{MID}; margin:0 0 8px;
-                                   text-transform:uppercase; letter-spacing:0.5px;'>
-                                   {row["market"]} · {row.get("channel","—")}</p>
-                                <div style='display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; font-size:12px;'>
-                                  <span>👁 Reach</span><b>{reach_str}</b>
-                                  <span>💶 Spend</span><b>\u20ac{spend:,.0f}</b>
-                                  <span>📈 ROAS</span><b style='color:{roas_col}'>{roas_str}</b>
-                                  <span>📊 CPM</span><b>\u20ac{cpm:.2f}</b>
-                                </div>
-                                <p style='margin:8px 0 0; font-size:10px; color:{MID};'>
-                                   {row["start"]} → {row["end"]}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
 
-        # ── Campaign timeline (Gantt-style) ───────────────────────────────────
+                # Build CPM scatter: reach vs spend, bubble = n activations per handle
+                _inf_agg = inf_df.copy()
+                _inf_agg["reach_clean"] = _inf_agg["reach"].apply(
+                    lambda v: float(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else 0.0
+                )
+                _inf_agg["cpm"] = (_inf_agg["media_spend"] / _inf_agg["reach_clean"].clip(lower=1) * 1000).round(2)
+
+                _inf_by_handle = (_inf_agg.groupby("influencer").agg(
+                    market=("market","first"),
+                    channel=("channel","first"),
+                    activations=("id","count"),
+                    total_spend=("media_spend","sum"),
+                    total_reach=("reach_clean","sum"),
+                ).reset_index())
+                _inf_by_handle["cpm"] = (
+                    _inf_by_handle["total_spend"] / _inf_by_handle["total_reach"].clip(lower=1) * 1000
+                ).round(2)
+                _inf_by_handle = _inf_by_handle.sort_values("cpm")
+
+                col_inf_scatter, col_inf_tbl = st.columns([0.5, 0.5])
+
+                with col_inf_scatter:
+                    _has_reach = _inf_by_handle[_inf_by_handle["total_reach"] > 0]
+                    if not _has_reach.empty:
+                        _icolors = [ch_palette[i % len(ch_palette)] for i in range(len(_has_reach))]
+                        fig_inf = go.Figure()
+                        for i, (_, row) in enumerate(_has_reach.iterrows()):
+                            fig_inf.add_trace(go.Scatter(
+                                x=[row["total_reach"]],
+                                y=[row["total_spend"]],
+                                mode="markers+text",
+                                name=row["influencer"],
+                                text=[row["influencer"]],
+                                textposition="top center",
+                                textfont=dict(size=9, color=BROWN),
+                                marker=dict(
+                                    size=14 + row["activations"] * 4,
+                                    color=ch_palette[i % len(ch_palette)],
+                                    opacity=0.85,
+                                    line=dict(color=CREAM, width=1.5),
+                                ),
+                                hovertemplate=(
+                                    f"<b>{row['influencer']}</b><br>"
+                                    f"Reach: {int(row['total_reach']):,}<br>"
+                                    f"Spend: \u20ac{row['total_spend']:,.0f}<br>"
+                                    f"CPM: \u20ac{row['cpm']:.2f}<br>"
+                                    f"Activations: {int(row['activations'])}"
+                                    "<extra></extra>"
+                                ),
+                            ))
+                        l_inf = base_layout("Reach vs Spend (bubble = # activations)", height=320, legend_below=False)
+                        l_inf["xaxis"]["title"] = dict(text="Est. Reach", font=dict(size=10))
+                        l_inf["yaxis"]["tickprefix"] = "\u20ac"
+                        l_inf["yaxis"]["title"] = dict(text="Total Spend", font=dict(size=10))
+                        l_inf["showlegend"] = False
+                        fig_inf.update_layout(**l_inf)
+                        st.plotly_chart(fig_inf, use_container_width=True)
+
+                with col_inf_tbl:
+                    _tbl_inf = _inf_by_handle[["influencer","market","activations",
+                                               "total_spend","total_reach","cpm"]].copy()
+                    _tbl_inf.columns = ["Handle","Market","Activations","Spend (€)","Est. Reach","CPM (€)"]
+                    _tbl_inf["Spend (€)"] = _tbl_inf["Spend (€)"].apply(lambda x: f"\u20ac{x:,.0f}")
+                    _tbl_inf["Est. Reach"] = _tbl_inf["Est. Reach"].apply(
+                        lambda x: f"{int(x):,}" if x > 0 else "—")
+                    _tbl_inf["CPM (€)"] = _tbl_inf["CPM (€)"].apply(
+                        lambda x: f"\u20ac{x:.2f}" if x > 0 else "—")
+                    st.markdown(
+                        f"<p style='font-size:11px;font-weight:600;color:{BROWN};margin:18px 0 6px;'>"
+                        "Ranked by CPM (cheapest reach first)</p>",
+                        unsafe_allow_html=True,
+                    )
+                    st.dataframe(_tbl_inf, use_container_width=True, hide_index=True)
+
+        # ── Campaign Timeline ─────────────────────────────────────────────────
         st.markdown("<h2>Campaign Timeline</h2>", unsafe_allow_html=True)
-
         mkt_gant = mkt_f.copy()
         mkt_gant["start_dt"] = pd.to_datetime(mkt_gant["start"], errors="coerce")
-        mkt_gant["end_dt"]   = pd.to_datetime(mkt_gant["end"],   errors="coerce")
-        mkt_gant = mkt_gant.dropna(subset=["start_dt","end_dt"])
-
+        mkt_gant = mkt_gant.dropna(subset=["start_dt"])
         if not mkt_gant.empty:
-            # Group by channel and show one bar per campaign coloured by channel
             ch_color_map = dict(zip(
                 mkt_gant["channel"].unique(),
                 ch_palette[:mkt_gant["channel"].nunique()]
             ))
-            # Aggregate monthly campaign counts per channel for a simple bar Gantt substitute
-            mkt_gant["month_str"] = mkt_gant["start_dt"].dt.to_period("M").astype(str)
-            gantt_monthly = (mkt_gant.groupby(["month_str","channel"])
+            mkt_gant["_mkey"]  = mkt_gant["start_dt"].dt.to_period("M").astype(str)
+            mkt_gant["month"]  = mkt_gant["start_dt"].dt.strftime("%b %Y")
+            gantt_monthly = (mkt_gant.groupby(["_mkey","month","channel"])
                              .agg(count=("name","count"), spend=("total_spend","sum"))
-                             .reset_index().sort_values("month_str"))
-
+                             .reset_index().sort_values("_mkey"))
             fig_gantt = go.Figure()
             for ch in gantt_monthly["channel"].unique():
                 d = gantt_monthly[gantt_monthly["channel"] == ch]
                 fig_gantt.add_trace(go.Scatter(
-                    x=d["month_str"],
-                    y=d["spend"],
+                    x=d["month"], y=d["spend"],
                     mode="lines+markers",
                     name=ch,
                     line=dict(color=ch_color_map.get(ch, BROWN), width=2),
-                    marker=dict(size=d["count"]*3, sizemode="diameter",
-                                color=ch_color_map.get(ch, BROWN)),
-                    hovertemplate=(f"<b>{ch}</b><br>%{{x}}<br>"
-                                   "Campaigns: %{marker.size:.0f}<br>"
-                                   "Spend: \u20ac%{y:,.0f}<extra></extra>"),
+                    marker=dict(size=(d["count"] * 4).clip(upper=24),
+                                color=ch_color_map.get(ch, BROWN),
+                                line=dict(color=CREAM, width=1)),
+                    hovertemplate=(
+                        f"<b>{ch}</b><br>%{{x}}<br>"
+                        "Campaigns: %{marker.size:.0f}<br>"
+                        "Spend: \u20ac%{y:,.0f}<extra></extra>"
+                    ),
                 ))
-            l_gantt = base_layout("Monthly Spend Pulse by Channel (bubble = # campaigns)", height=320)
+            l_gantt = base_layout("Monthly Spend Pulse by Channel  ·  bubble size = # campaigns", height=340)
             l_gantt["yaxis"]["tickprefix"] = "\u20ac"
-            l_gantt["xaxis"]["tickangle"] = -30
+            l_gantt["xaxis"]["tickangle"] = -35
+            l_gantt["legend"]["y"] = -0.22
             fig_gantt.update_layout(**l_gantt)
             st.plotly_chart(fig_gantt, use_container_width=True)
-
-        # ── Marketing spend by channel vs sell-in pieces ─────────────────────
-        st.markdown("<h2>Which Channel Drives Sell-In?</h2>", unsafe_allow_html=True)
-        st.markdown(
-            f"<p style='font-size:12px;color:{MID};'>"
-            "Two views: <b>Left</b> — spend by channel each January vs sell-in that year (year-level attribution). "
-            "<b>Right</b> — spend share by channel vs revenue share, revealing where €1 invested returns most. "
-            "Channels with a larger revenue bar than spend bar are outperforming their budget weight.</p>",
-            unsafe_allow_html=True,
-        )
-        if not prim_df.empty and not mkt_df.empty:
-            _ch_pal2 = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
-
-            # ── LEFT: Year-level channel spend vs Jan sell-in (all years) ────────
-            _pi_yr = prim_df.copy()
-            _pi_yr["year"] = _pi_yr["week"].dt.year.astype(str)
-            _pi_yearly = _pi_yr.groupby("year")["bottles"].sum().reset_index()
-            _pi_yearly.columns = ["year", "pieces"]
-
-            _mk_yr = mkt_df.copy()
-            _mk_yr["year"] = pd.to_datetime(_mk_yr["start"], errors="coerce").dt.year.astype(str)
-            _mk_ch_yr = (_mk_yr.groupby(["year","channel"])["total_spend"].sum()
-                         .unstack(fill_value=0).reset_index())
-            _merged_yr = _mk_ch_yr.merge(_pi_yearly, on="year", how="left").sort_values("year").fillna(0)
-            _ch_cols_yr = [c for c in _merged_yr.columns if c not in ("year","pieces")]
-
-            col_ch1, col_ch2 = st.columns(2)
-            with col_ch1:
-                fig_ch_yr = go.Figure()
-                for _idx, _ch in enumerate(_ch_cols_yr):
-                    fig_ch_yr.add_trace(go.Bar(
-                        x=_merged_yr["year"], y=_merged_yr[_ch],
-                        name=_ch,
-                        marker_color=_ch_pal2[_idx % len(_ch_pal2)],
-                        yaxis="y",
-                        hovertemplate=f"<b>{_ch}</b><br>%{{x}}: \u20ac%{{y:,.0f}}<extra></extra>",
-                    ))
-                fig_ch_yr.add_trace(go.Scatter(
-                    x=_merged_yr["year"], y=_merged_yr["pieces"],
-                    name="Sell-In Pieces",
-                    mode="lines+markers",
-                    line=dict(color=CORAL, width=3),
-                    marker=dict(size=10, color=CORAL, symbol="diamond"),
-                    yaxis="y2",
-                    hovertemplate="Sell-In: %{y:,} pcs<extra></extra>",
-                ))
-                _l_yr = base_layout("Channel Spend vs Annual Sell-In", height=360)
-                _l_yr["barmode"] = "stack"
-                _l_yr["yaxis"]["tickprefix"] = "\u20ac"
-                _l_yr["yaxis2"] = dict(
-                    overlaying="y", side="right", showgrid=False,
-                    tickfont=dict(color=CORAL, size=10),
-                    title=dict(text="Pieces", font=dict(color=CORAL, size=10)),
-                )
-                _l_yr["legend"]["orientation"] = "h"
-                _l_yr["legend"]["y"] = -0.35
-                fig_ch_yr.update_layout(**_l_yr)
-                st.plotly_chart(fig_ch_yr, use_container_width=True)
-
-            # ── RIGHT: Channel efficiency — spend share vs revenue share ─────────
-            with col_ch2:
-                _ch_spend = mkt_f.groupby("channel")["total_spend"].sum().reset_index()
-                _ch_spend.columns = ["channel","spend"]
-                _total_spend_ch = max(_ch_spend["spend"].sum(), 1)
-                # Use full selected-period revenue as denominator — safe against empty frames
-                _total_rev_ch = max(prim_f["gross_revenue"].sum() if not prim_f.empty else 1, 1)
-                _ch_spend["spend_share"] = _ch_spend["spend"] / _total_spend_ch * 100
-                # Revenue share proxy: attribute revenue proportionally to spend per channel (heuristic)
-                _ch_spend["rev_share_proxy"] = _ch_spend["spend_share"]  # baseline = same as spend share
-                # If we had attribution data, we'd override above — for now flag it
-                _ch_spend_s = _ch_spend.sort_values("spend", ascending=False)
-                _eff_colors = [_ch_pal2[i % len(_ch_pal2)] for i in range(len(_ch_spend_s))]
-
-                fig_eff = go.Figure()
-                fig_eff.add_trace(go.Bar(
-                    x=_ch_spend_s["channel"],
-                    y=_ch_spend_s["spend"],
-                    name="Total Spend (€)",
-                    marker_color=_eff_colors,
-                    text=[f"\u20ac{v:,.0f}" for v in _ch_spend_s["spend"]],
-                    textposition="outside",
-                    hovertemplate="<b>%{x}</b><br>Spend: \u20ac%{y:,.0f}<extra></extra>",
-                ))
-                _l_eff = base_layout("Spend by Channel (selected period)", height=360)
-                _l_eff["yaxis"]["tickprefix"] = "\u20ac"
-                _l_eff["xaxis"]["tickangle"] = -20
-                fig_eff.update_layout(**_l_eff)
-                st.plotly_chart(fig_eff, use_container_width=True)
-
-            st.markdown(
-                f"<div style='background:#fff8f0;border-left:4px solid {YELLOW};padding:8px 14px;"
-                f"border-radius:5px;font-size:12px;color:#3a2e24;margin-top:-8px;'>"
-                f"⚠️ <b>Data note:</b> Sell-in invoices are entered in January each year — "
-                f"true month-by-month correlation needs monthly invoice entries in the Excel. "
-                f"The year-level view above is the best attribution possible with current data."
-                f"</div>",
-                unsafe_allow_html=True,
-            )
 
         # ── All campaigns table ───────────────────────────────────────────────
         st.markdown(
@@ -1804,19 +1756,18 @@ with tab2:
             f"{len(mkt_f)} campaigns · \u20ac{mkt_f['total_spend'].sum():,.0f} total in selected period</p>",
             unsafe_allow_html=True,
         )
-        tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas"] if c in mkt_f.columns]
-        tbl = mkt_f[tbl_cols].copy()
-        rename_map = {
+        _tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas"]
+                     if c in mkt_f.columns]
+        _tbl = mkt_f[_tbl_cols].copy().rename(columns={
             "id": "ID", "name": "Campaign", "channel": "Channel",
             "market": "Mkt", "start": "Start", "end": "End",
             "total_spend": "Spend (\u20ac)", "roas": "ROAS",
-        }
-        tbl = tbl.rename(columns=rename_map)
-        if "Spend (\u20ac)" in tbl.columns:
-            tbl["Spend (\u20ac)"] = tbl["Spend (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-        if "ROAS" in tbl.columns:
-            tbl["ROAS"] = tbl["ROAS"].apply(lambda x: f"{x:.1f}\u00d7" if pd.notna(x) else "—")
-        st.dataframe(tbl, use_container_width=True, hide_index=True)
+        })
+        if "Spend (\u20ac)" in _tbl.columns:
+            _tbl["Spend (\u20ac)"] = _tbl["Spend (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
+        if "ROAS" in _tbl.columns:
+            _tbl["ROAS"] = _tbl["ROAS"].apply(lambda x: f"{x:.1f}\u00d7" if pd.notna(x) else "—")
+        st.dataframe(_tbl, use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1849,8 +1800,7 @@ with tab3:
             💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
             🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Production COGS − Logistics − Mktg &amp; Promo − Promo &amp; External − Internal Consumption = Gross Margin<br>
-            <span style='color:#7a5c3a;font-size:11.5px;'>💡 Use the expander below to enter the € value of active stock, promo, and internal consumption — these are deducted from Production COGS or shown as separate bars.</span>
+            📐 <b>Formula:</b> Gross Revenue − Production COGS − Logistics − Mktg &amp; Promo − Promo &amp; External − Internal Consumption = Gross Margin
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1859,41 +1809,9 @@ with tab3:
                                    if m in (market_filter or ["SI","HR","DE"])]
     wf_mkt = st.radio("Market:", options=_wf_opts, horizontal=True, key="wf_mkt")
 
-    # ── Cost Allocation — read from Excel, with optional manual override ──────
-    _any_xl = xl_stock_val > 0 or xl_promo_val > 0 or xl_internal_val > 0
-    with st.expander(
-        f"📦 Cost Allocation  "
-        f"{'— values loaded from Excel ✅' if _any_xl else '— update in the Expenses sheet of your Excel'}",
-        expanded=not _any_xl,
-    ):
-        st.markdown(
-            "<small style='color:#5a3e2b;'>Enter the <b>€ value of production cost</b> allocated to each bucket. "
-            "These are read from the <b>📦 COST ALLOCATION ADJUSTMENTS</b> section at the bottom of the "
-            "<b>Expenses</b> sheet — update there and re-upload, or override here temporarily.</small>",
-            unsafe_allow_html=True,
-        )
-        _c1, _c2, _c3 = st.columns(3)
-        with _c1:
-            stock_val = st.number_input(
-                "🏭 Active stock value (€)",
-                min_value=0.0, value=float(xl_stock_val), step=100.0, format="%.2f",
-                key="wf_stock_val",
-                help="Production cost of bottles in the warehouse — removed from P&L, shown as inventory on balance sheet."
-            )
-        with _c2:
-            promo_val = st.number_input(
-                "🎁 Promo & external (€)",
-                min_value=0.0, value=float(xl_promo_val), step=100.0, format="%.2f",
-                key="wf_promo_val",
-                help="Production cost of bottles given away for sampling, events, or retail activation."
-            )
-        with _c3:
-            internal_val = st.number_input(
-                "🍽️ Internal consumption (€)",
-                min_value=0.0, value=float(xl_internal_val), step=100.0, format="%.2f",
-                key="wf_internal_val",
-                help="Production cost of bottles used for employee lunches or internal team use."
-            )
+    stock_val    = xl_stock_val
+    promo_val    = xl_promo_val
+    internal_val = xl_internal_val
 
     # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
     _prim_2026 = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
