@@ -1411,13 +1411,33 @@ with tab1:
     pieces_delta = _delta_str(prim_pieces, py_pieces)
     gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
 
+    # ── 2026 run rate ─────────────────────────────────────────────────────────
+    _pf_2026_all = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
+    if not _pf_2026_all.empty:
+        _2026_mo_grp = (_pf_2026_all.copy()
+                        .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str))
+                        .groupby("_mkey").agg(pieces=("bottles","sum"), revenue=("gross_revenue","sum"))
+                        .reset_index())
+        _n_actual_mo = len(_2026_mo_grp)
+        _run_rate_pcs = int(_2026_mo_grp["pieces"].mean() * 12)
+        _run_rate_rev = _2026_mo_grp["revenue"].mean() * 12
+    else:
+        _n_actual_mo = 0
+        _run_rate_pcs = 0
+        _run_rate_rev = 0.0
+
     # ── KPI row ───────────────────────────────────────────────────────────────
-    k1, k2, k3 = st.columns(3)
+    k1, k2, k3, k4 = st.columns(4)
     k1.metric("Pieces Sold", f"{prim_pieces:,.0f}", delta=pieces_delta,
               help=f"Prior year same period: {py_pieces:,.0f} pcs" if py_pieces else None)
     k2.metric("Gross Revenue", f"€{total_gross:,.0f}", delta=gross_delta,
               help=f"Prior year same period: €{py_gross:,.0f}" if py_gross else None)
     k3.metric("Avg Price / Piece", f"€{avg_price_pc:.2f}")
+    if _run_rate_rev > 0:
+        _rr_label = f"€{_run_rate_rev:,.0f}" if metric_mode != "Pieces sold" else f"{_run_rate_pcs:,}"
+        k4.metric("2026 Full-Year Run Rate",
+                  _rr_label,
+                  help=f"Based on {_n_actual_mo} month(s) of 2026 data × 12. Not a guaranteed forecast.")
 
     st.markdown("")
 
@@ -1429,8 +1449,8 @@ with tab1:
             f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
         )
 
-    # ── Monthly sales by category + Sales vs Marketing ────────────────────────
-    col_trend, col_mktcorr = st.columns([0.55, 0.45])
+    # ── Monthly sales by category + 2026 Forecast ────────────────────────────
+    col_trend, col_fc = st.columns([0.55, 0.45])
 
     with col_trend:
         if not prim_f.empty:
@@ -1454,7 +1474,7 @@ with tab1:
                     marker_color=CATEGORY_COLORS.get(cat, BROWN),
                     hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
                 ))
-            l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=300)
+            l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=320)
             l_sw["barmode"] = "stack"
             l_sw["xaxis"]["tickangle"] = -30
             if metric_mode != "Pieces sold":
@@ -1464,57 +1484,76 @@ with tab1:
         else:
             st.info("No primary sales data.")
 
-    with col_mktcorr:
-        if not prim_f.empty and not mkt_f.empty:
-            prim_mo = prim_f.copy()
-            prim_mo["_mkey"] = prim_mo["week"].dt.to_period("M").astype(str)
-            prim_mo["month"] = prim_mo["week"].dt.strftime("%b %Y")
-            prim_monthly = prim_mo.groupby(["_mkey", "month"]).agg(
-                pieces=("bottles","sum"), revenue=("gross_revenue","sum")
-            ).reset_index().sort_values("_mkey")
+    with col_fc:
+        # 2026 actuals + projected remaining months at YTD run rate
+        _fc_y   = "pieces" if metric_mode == "Pieces sold" else "revenue"
+        _fc_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
 
-            mkt_mo = mkt_f.copy()
-            mkt_mo["_mkey"] = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.to_period("M").astype(str)
-            mkt_mo["month"]  = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.strftime("%b %Y")
-            mkt_monthly = mkt_mo.groupby(["_mkey", "month"])["total_spend"].sum().reset_index().sort_values("_mkey")
+        if not _pf_2026_all.empty and _n_actual_mo > 0:
+            _fc_act = (_pf_2026_all.copy()
+                       .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str),
+                               month=lambda d: d["week"].dt.strftime("%b %Y"))
+                       .groupby(["_mkey","month"]).agg(
+                           pieces=("bottles","sum"), revenue=("gross_revenue","sum"))
+                       .reset_index().sort_values("_mkey"))
 
-            merged = prim_monthly.merge(mkt_monthly[["_mkey","month","total_spend"]],
-                                        on=["_mkey","month"], how="outer").sort_values("_mkey").fillna(0)
-            si_y     = "pieces" if metric_mode == "Pieces sold" else "revenue"
-            si_label = "Pieces sold" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
+            _actual_mkeys = set(_fc_act["_mkey"])
+            _all_2026_mkeys = [f"2026-{m:02d}" for m in range(1, 13)]
+            _fc_mkeys = [mk for mk in _all_2026_mkeys if mk not in _actual_mkeys]
+            _fc_labels = [pd.Period(mk).strftime("%b %Y") for mk in _fc_mkeys]
+            _monthly_avg_fc = _fc_act[_fc_y].mean()
 
-            fig_corr = go.Figure()
-            fig_corr.add_trace(go.Bar(
-                x=merged["month"], y=merged[si_y],
-                name=si_label, marker_color=LAVEN, opacity=0.8,
-                yaxis="y",
-                hovertemplate=f"%{{x}}: %{{y:,}} {si_label}<extra></extra>",
+            fig_fc = go.Figure()
+            fig_fc.add_trace(go.Bar(
+                x=_fc_act["month"], y=_fc_act[_fc_y],
+                name="Actual", marker_color=BROWN, opacity=0.9,
+                hovertemplate=f"%{{x}}: %{{y:,}} {_fc_lbl} (actual)<extra></extra>",
             ))
-            fig_corr.add_trace(go.Scatter(
-                x=merged["month"], y=merged["total_spend"],
-                name="Marketing Spend", mode="lines+markers",
-                line=dict(color=CORAL, width=2),
-                marker=dict(size=6, color=CORAL),
-                yaxis="y2",
-                hovertemplate="%{x}: \u20ac%{y:,.0f} spend<extra></extra>",
-            ))
-            l_corr = base_layout("Sales vs Marketing Investment (monthly)", height=300)
-            l_corr["yaxis2"] = dict(
-                overlaying="y", side="right",
-                tickprefix="\u20ac", showgrid=False,
-                tickfont=dict(color=CORAL, size=10),
+            if _fc_labels:
+                fig_fc.add_trace(go.Bar(
+                    x=_fc_labels, y=[_monthly_avg_fc] * len(_fc_labels),
+                    name="Forecast (run rate)", marker_color=LAVEN, opacity=0.55,
+                    hovertemplate=f"%{{x}}: %{{y:,}} {_fc_lbl} (projected)<extra></extra>",
+                ))
+            _fc_total = int(_fc_act[_fc_y].sum() + _monthly_avg_fc * len(_fc_labels))
+            l_fc = base_layout(
+                f"2026 Monthly Sales + Forecast  ·  Full-year est: "
+                f"{'€' if _fc_y == 'revenue' else ''}{_fc_total:,}",
+                height=320,
             )
-            if metric_mode == "Pieces sold":
-                l_corr["yaxis"]["title"] = dict(text="Pieces", font=dict(size=10))
-            else:
-                l_corr["yaxis"]["tickprefix"] = "\u20ac"
-            l_corr["xaxis"]["tickangle"] = -30
-            l_corr["legend"]["orientation"] = "h"
-            l_corr["legend"]["y"] = -0.25
-            fig_corr.update_layout(**l_corr)
-            st.plotly_chart(fig_corr, use_container_width=True)
+            l_fc["barmode"] = "group"
+            l_fc["xaxis"]["tickangle"] = -30
+            l_fc["legend"]["orientation"] = "h"
+            l_fc["legend"]["y"] = -0.25
+            if _fc_y == "revenue":
+                l_fc["yaxis"]["tickprefix"] = "\u20ac"
+            fig_fc.update_layout(**l_fc)
+            st.plotly_chart(fig_fc, use_container_width=True)
         else:
-            st.info("Need both primary sales and marketing data for this chart.")
+            st.info("No 2026 data yet — forecast will appear once 2026 invoices are loaded.")
+
+    # ── Monthly performance table ─────────────────────────────────────────────
+    if not prim_f.empty:
+        _mo_tbl = (prim_f.copy()
+                   .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str),
+                           month=lambda d: d["week"].dt.strftime("%b %Y"))
+                   .groupby(["_mkey","month"]).agg(
+                       pieces=("bottles","sum"), revenue=("gross_revenue","sum"))
+                   .reset_index().sort_values("_mkey"))
+        _mo_tbl["MoM %"] = _mo_tbl["revenue"].pct_change() * 100
+        _mo_tbl = _mo_tbl.sort_values("_mkey", ascending=False)
+        _mo_tbl_out = _mo_tbl[["month","pieces","revenue","MoM %"]].copy()
+        _mo_tbl_out.columns = ["Month","Pieces","Revenue (€)","MoM %"]
+        _mo_tbl_out["Pieces"]      = _mo_tbl_out["Pieces"].apply(lambda x: f"{int(x):,}")
+        _mo_tbl_out["Revenue (€)"] = _mo_tbl_out["Revenue (€)"].apply(lambda x: f"€{x:,.0f}")
+        _mo_tbl_out["MoM %"]       = _mo_tbl_out["MoM %"].apply(
+            lambda x: f"+{x:.1f}%" if pd.notna(x) and x >= 0 else (f"{x:.1f}%" if pd.notna(x) else "—"))
+        st.markdown(
+            f"<p style='font-size:12px; color:{MID}; margin:4px 0 6px;'>"
+            "<b>Monthly Performance</b></p>",
+            unsafe_allow_html=True,
+        )
+        st.dataframe(_mo_tbl_out, use_container_width=True, hide_index=True)
 
     # ── Sales by category summary table ──────────────────────────────────────
     if not prim_f.empty:
@@ -1962,14 +2001,15 @@ with tab4:
     logistics  = exp_df["logistics"].sum()        if not exp_df.empty else 0
     mktg_promo = exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
 
-    # ── COGS allocation: remove stock / promo / internal from production cost ──
-    # stock_val → balance sheet asset (not expensed)
-    # promo_val + internal_val → expensed but as separate P&L lines
-    cogs_adjusted = max(prod_cost - stock_val - promo_val - internal_val, 0)
+    # ── COGS allocation ───────────────────────────────────────────────────────
+    # stock_val  → balance sheet asset (capitalized, NOT expensed this period)
+    # promo_val  → Promo & External spend (expensed, separate P&L line on top of COGS)
+    # internal_val → Internal Consumption (expensed, separate P&L line on top of COGS)
+    cogs_adjusted = max(prod_cost - stock_val, 0)
     total_exp = cogs_adjusted + promo_val + internal_val + logistics + mktg_promo
 
-    # Gross Margin = Revenue − all expensed costs
-    gross_margin = gross - cogs_adjusted - logistics - mktg_promo - promo_val - internal_val
+    # Gross Margin = Revenue − COGS − all additional expense lines
+    gross_margin = gross - cogs_adjusted - promo_val - internal_val - logistics - mktg_promo
 
     # ── Inventory / allocation callout ────────────────────────────────────────
     if stock_val > 0:
@@ -1986,14 +2026,13 @@ with tab4:
         wf_labels  = ["Gross Revenue", "Production COGS", "Logistics", "Mktg & Promo"]
         wf_measure = ["absolute",       "relative",        "relative",  "relative"]
         wf_values  = [gross,            -cogs_adjusted,    -logistics,  -mktg_promo]
-        if promo_val > 0:
-            wf_labels.append("Promo & External")
-            wf_measure.append("relative")
-            wf_values.append(-promo_val)
-        if internal_val > 0:
-            wf_labels.append("Internal Consumption")
-            wf_measure.append("relative")
-            wf_values.append(-internal_val)
+        # Always show Promo & External and Internal Consumption when expense data is present
+        wf_labels.append("Promo & External")
+        wf_measure.append("relative")
+        wf_values.append(-promo_val)
+        wf_labels.append("Internal Consumption")
+        wf_measure.append("relative")
+        wf_values.append(-internal_val)
         wf_labels.append("Gross Margin")
         wf_measure.append("total")
         wf_values.append(gross_margin)
@@ -2108,10 +2147,11 @@ with tab5:
         )
 
         if not exp_df.empty:
-            # Mirror the profitability waterfall: subtract balance-sheet stock from production cost
-            # (stock_val stays on balance sheet, not expensed; promo/internal ARE expensed)
+            # Mirror the profitability waterfall logic exactly:
+            # stock_val removed from COGS (balance sheet); promo + internal added as extra lines
             _prod_cost_raw = exp_df["production_cost"].sum()
             _total_exp_sku = (max(_prod_cost_raw - xl_stock_val, 0)
+                              + xl_promo_val + xl_internal_val
                               + exp_df["logistics"].sum()
                               + exp_df["marketing_promo"].sum())
             _total_rev_sku = sku_prim["gross"].sum()
