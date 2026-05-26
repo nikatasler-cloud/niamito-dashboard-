@@ -1485,7 +1485,6 @@ with tab1:
             st.info("No primary sales data.")
 
     with col_fc:
-        # 2026 actuals + projected remaining months at YTD run rate
         _fc_y   = "pieces" if metric_mode == "Pieces sold" else "revenue"
         _fc_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
 
@@ -1501,7 +1500,23 @@ with tab1:
             _all_2026_mkeys = [f"2026-{m:02d}" for m in range(1, 13)]
             _fc_mkeys = [mk for mk in _all_2026_mkeys if mk not in _actual_mkeys]
             _fc_labels = [pd.Period(mk).strftime("%b %Y") for mk in _fc_mkeys]
-            _monthly_avg_fc = _fc_act[_fc_y].mean()
+            _monthly_avg_fc = _fc_act[_fc_y].mean()  # base for the first forecast month
+
+            # Growth rate slider
+            _growth_pct = st.slider(
+                "Monthly growth assumption (%)",
+                min_value=-10, max_value=30, value=5, step=1,
+                key="fc_growth_slider",
+                help="Applied month-over-month to the last actual month as the forecast base.",
+            )
+            _growth_rate = _growth_pct / 100.0
+
+            # Last actual value as the compounding base
+            _last_actual = float(_fc_act[_fc_y].iloc[-1]) if not _fc_act.empty else _monthly_avg_fc
+            _fc_values = [
+                _last_actual * ((1 + _growth_rate) ** (i + 1))
+                for i in range(len(_fc_labels))
+            ]
 
             fig_fc = go.Figure()
             fig_fc.add_trace(go.Bar(
@@ -1511,15 +1526,15 @@ with tab1:
             ))
             if _fc_labels:
                 fig_fc.add_trace(go.Bar(
-                    x=_fc_labels, y=[_monthly_avg_fc] * len(_fc_labels),
-                    name="Forecast (run rate)", marker_color=LAVEN, opacity=0.55,
-                    hovertemplate=f"%{{x}}: %{{y:,}} {_fc_lbl} (projected)<extra></extra>",
+                    x=_fc_labels, y=_fc_values,
+                    name=f"Forecast (+{_growth_pct}%/mo)", marker_color=LAVEN, opacity=0.6,
+                    hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (projected)<extra></extra>",
                 ))
-            _fc_total = int(_fc_act[_fc_y].sum() + _monthly_avg_fc * len(_fc_labels))
             _fc_prefix = "€" if _fc_y == "revenue" else ""
+            _fc_total = _fc_act[_fc_y].sum() + sum(_fc_values)
             l_fc = base_layout(
-                f"2026 Actuals + Forecast  ·  Full-year est: {_fc_prefix}{_fc_total:,}",
-                height=320,
+                f"2026 Actuals + Forecast  ·  Full-year est: {_fc_prefix}{int(_fc_total):,}",
+                height=300,
             )
             l_fc["barmode"] = "group"
             l_fc["xaxis"]["tickangle"] = -30
@@ -1529,12 +1544,6 @@ with tab1:
                 l_fc["yaxis"]["tickprefix"] = "\u20ac"
             fig_fc.update_layout(**l_fc)
             st.plotly_chart(fig_fc, use_container_width=True)
-            if _fc_labels:
-                st.caption(
-                    f"Forecast ({len(_fc_labels)} months) uses a flat monthly average "
-                    f"from {_n_actual_mo} actual month(s): {_fc_prefix}{_monthly_avg_fc:,.0f}/mo. "
-                    "No growth assumed — update monthly as actuals come in."
-                )
         else:
             st.info("No 2026 data yet — forecast will appear once 2026 invoices are loaded.")
 
@@ -1873,56 +1882,6 @@ with tab3:
             fig_cum.update_layout(**l_cum)
             st.plotly_chart(fig_cum, use_container_width=True)
 
-        # ── Sales vs Marketing Investment ─────────────────────────────────────
-        if not prim_f.empty:
-            st.markdown("<h2>Sales vs Marketing Investment</h2>", unsafe_allow_html=True)
-            _mkt_pmo = mkt_f.copy()
-            _mkt_pmo["_mkey"] = pd.to_datetime(_mkt_pmo["start"], errors="coerce").dt.to_period("M").astype(str)
-            _mkt_pmo["month"] = pd.to_datetime(_mkt_pmo["start"], errors="coerce").dt.strftime("%b %Y")
-            _mkt_spend_mo = _mkt_pmo.groupby(["_mkey","month"])["total_spend"].sum().reset_index().sort_values("_mkey")
-
-            _prim_pmo = prim_f.copy()
-            _prim_pmo["_mkey"] = _prim_pmo["week"].dt.to_period("M").astype(str)
-            _prim_pmo["month"] = _prim_pmo["week"].dt.strftime("%b %Y")
-            _prim_rev_mo = _prim_pmo.groupby(["_mkey","month"]).agg(
-                revenue=("gross_revenue","sum"), pieces=("bottles","sum")
-            ).reset_index().sort_values("_mkey")
-
-            _mkt_merged = _prim_rev_mo.merge(
-                _mkt_spend_mo[["_mkey","month","total_spend"]], on=["_mkey","month"], how="outer"
-            ).sort_values("_mkey").fillna(0)
-            _mkt_merged["roi"] = (_mkt_merged["revenue"] / _mkt_merged["total_spend"].clip(lower=1)).round(2)
-
-            _mkt_si_y   = "pieces" if metric_mode == "Pieces sold" else "revenue"
-            _mkt_si_lbl = "Pieces" if metric_mode == "Pieces sold" else "Revenue (€)"
-
-            fig_mkt_corr = go.Figure()
-            fig_mkt_corr.add_trace(go.Bar(
-                x=_mkt_merged["month"], y=_mkt_merged[_mkt_si_y],
-                name=_mkt_si_lbl, marker_color=LAVEN, opacity=0.8, yaxis="y",
-                hovertemplate=f"%{{x}}: %{{y:,}} {_mkt_si_lbl}<extra></extra>",
-            ))
-            fig_mkt_corr.add_trace(go.Scatter(
-                x=_mkt_merged["month"], y=_mkt_merged["total_spend"],
-                name="Marketing Spend", mode="lines+markers",
-                line=dict(color=CORAL, width=2),
-                marker=dict(size=7, color=CORAL),
-                yaxis="y2",
-                hovertemplate="%{x}: \u20ac%{y:,.0f} spend<extra></extra>",
-            ))
-            l_mkt_corr = base_layout("Monthly Sales vs Marketing Spend", height=320)
-            l_mkt_corr["yaxis2"] = dict(
-                overlaying="y", side="right", tickprefix="\u20ac",
-                showgrid=False, tickfont=dict(color=CORAL, size=10),
-            )
-            if metric_mode != "Pieces sold":
-                l_mkt_corr["yaxis"]["tickprefix"] = "\u20ac"
-            l_mkt_corr["xaxis"]["tickangle"] = -30
-            l_mkt_corr["legend"]["orientation"] = "h"
-            l_mkt_corr["legend"]["y"] = -0.25
-            fig_mkt_corr.update_layout(**l_mkt_corr)
-            st.plotly_chart(fig_mkt_corr, use_container_width=True)
-
         # ── All campaigns table ───────────────────────────────────────────────
         st.markdown(
             f"<h2>All Campaigns</h2>"
@@ -2147,72 +2106,12 @@ with tab5:
         fig_rev.update_layout(**l_rev)
         st.plotly_chart(fig_rev, use_container_width=True)
 
-        # ── Net contribution per SKU (revenue minus allocated expenses) ────────
-        st.markdown("<h2>Revenue After Expenses \u2014 Estimated Contribution per SKU</h2>",
-                    unsafe_allow_html=True)
-        st.markdown(
-            f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
-            "Total expenses allocated to each SKU by its share of gross revenue. "
-            "Shows which SKUs generate real margin after all costs.</p>",
-            unsafe_allow_html=True,
-        )
-
-        if not exp_df.empty:
-            # Mirror the profitability waterfall logic exactly:
-            # stock_val removed from COGS (balance sheet); promo + internal added as extra lines
-            _prod_cost_raw = exp_df["production_cost"].sum()
-            _total_exp_sku = (max(_prod_cost_raw - xl_stock_val, 0)
-                              + xl_promo_val + xl_internal_val
-                              + exp_df["logistics"].sum()
-                              + exp_df["marketing_promo"].sum())
-            _total_rev_sku = sku_prim["gross"].sum()
-            sku_contrib = sku_prim.copy()
-            sku_contrib["rev_share"]    = sku_contrib["gross"] / max(_total_rev_sku, 1)
-            sku_contrib["alloc_cost"]   = (sku_contrib["rev_share"] * _total_exp_sku).round(2)
-            sku_contrib["contribution"] = (sku_contrib["gross"] - sku_contrib["alloc_cost"]).round(2)
-            sku_contrib["contrib_pct"]  = (
-                sku_contrib["contribution"] / sku_contrib["gross"].clip(lower=0.01) * 100
-            ).round(1)
-            sku_contrib_sorted = sku_contrib.sort_values("contribution", ascending=True)
-
-            _contrib_colors = [GREEN if v >= 0 else CORAL for v in sku_contrib_sorted["contribution"]]
-            fig_contrib = go.Figure(go.Bar(
-                x=sku_contrib_sorted["contribution"],
-                y=sku_contrib_sorted["sku_name"],
-                orientation="h",
-                marker=dict(color=_contrib_colors),
-                text=[f"\u20ac{v:,.0f}" for v in sku_contrib_sorted["contribution"]],
-                textposition="outside",
-                hovertemplate="<b>%{y}</b><br>Contribution: \u20ac%{x:,.0f}<extra></extra>",
-            ))
-            l_contrib = base_layout(
-                "Estimated Contribution after Expenses (revenue \u2212 allocated costs)",
-                height=max(300, len(sku_contrib) * 36),
-            )
-            l_contrib["xaxis"]["tickprefix"] = "\u20ac"
-            l_contrib["xaxis"]["zeroline"] = True
-            l_contrib["xaxis"]["zerolinecolor"] = BROWN
-            l_contrib["margin"]["r"] = 80
-            l_contrib["margin"]["l"] = 220
-            fig_contrib.update_layout(**l_contrib)
-            st.plotly_chart(fig_contrib, use_container_width=True)
-
-            _sku_out = sku_contrib[["sku_name","bottles","gross","alloc_cost","contribution","contrib_pct"]].copy()
-            _sku_out.columns = ["SKU","Pieces","Revenue (\u20ac)","Allocated Cost (\u20ac)","Contribution (\u20ac)","Margin %"]
-            _sku_out = _sku_out.sort_values("Contribution (\u20ac)", ascending=False)
-            _sku_out["Pieces"]                  = _sku_out["Pieces"].apply(lambda x: f"{int(x):,}")
-            _sku_out["Revenue (\u20ac)"]         = _sku_out["Revenue (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-            _sku_out["Allocated Cost (\u20ac)"]  = _sku_out["Allocated Cost (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-            _sku_out["Contribution (\u20ac)"]    = _sku_out["Contribution (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-            _sku_out["Margin %"]                = _sku_out["Margin %"].apply(lambda x: f"{x:.1f}%")
-            st.dataframe(_sku_out, use_container_width=True, hide_index=True)
-        else:
-            _sku_simple = sku_prim[["sku_name","bottles","gross"]].copy()
-            _sku_simple.columns = ["SKU","Pieces","Gross Revenue (\u20ac)"]
-            _sku_simple["Pieces"]                 = _sku_simple["Pieces"].apply(lambda x: f"{int(x):,}")
-            _sku_simple["Gross Revenue (\u20ac)"]  = _sku_simple["Gross Revenue (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-            st.caption("Upload an Excel file with an Expenses sheet to see cost-adjusted contribution per SKU.")
-            st.dataframe(_sku_simple, use_container_width=True, hide_index=True)
+        # ── SKU summary table ─────────────────────────────────────────────────
+        _sku_simple = sku_prim[["sku_name","bottles","gross"]].copy()
+        _sku_simple.columns = ["SKU","Pieces","Gross Revenue (\u20ac)"]
+        _sku_simple["Pieces"]               = _sku_simple["Pieces"].apply(lambda x: f"{int(x):,}")
+        _sku_simple["Gross Revenue (\u20ac)"] = _sku_simple["Gross Revenue (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
+        st.dataframe(_sku_simple, use_container_width=True, hide_index=True)
     else:
         st.info("No primary sales data available.")
 
