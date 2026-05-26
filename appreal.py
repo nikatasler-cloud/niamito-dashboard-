@@ -651,22 +651,54 @@ def load_excel(file):
         "Tradicionalni marketing": "Traditional",
     }
 
-    import openpyxl as _opxl
-    _wb = _opxl.load_workbook(file, data_only=True)
+    import openpyxl as _opxl, re as _re
+
+    def _cell_val(v):
+        """Extract actual value from openpyxl cell — handles IFERROR formula wrappers that
+        Google Sheets / Excel use to cache computed values (IMPORTRANGE, DUMMYFUNCTION, etc.).
+        Works whether the workbook was opened with data_only=True (returns cached value directly)
+        or data_only=False (returns the formula string, from which we extract the fallback value)."""
+        if v is None:
+            return None
+        s = str(v)
+        if not s.startswith("="):
+            return v  # plain value — return as-is
+        # General IFERROR fallback: match the last , "string" or , number before closing paren
+        m = _re.search(r',\s*("([^"]*)"|([-]?\d+(?:\.\d+)?))\s*\)\s*$', s)
+        if m:
+            if m.group(2) is not None:    # quoted string fallback
+                return m.group(2)
+            try:
+                return float(m.group(3))  # numeric fallback
+            except Exception:
+                pass
+        return None  # formula with no usable fallback
+
+    # Load without data_only so formula-embedded cached values can be extracted.
+    # This is more robust than data_only=True, which fails if the file was saved by openpyxl
+    # (which strips Excel-cached formula results).
+    _wb = _opxl.load_workbook(file, data_only=False)
+
+    def _read_ws_rows(ws, header_row: int, data_start: int):
+        """Read a worksheet into a list of dicts, extracting values from formula wrappers."""
+        headers = [
+            (str(_cell_val(cell.value)).replace("\n", " ").strip()
+             if _cell_val(cell.value) is not None else f"_col{i}")
+            for i, cell in enumerate(ws[header_row])
+        ]
+        rows = []
+        for row in ws.iter_rows(min_row=data_start, values_only=False):
+            extracted = [_cell_val(cell.value) for cell in row]
+            if any(v is not None for v in extracted):
+                rows.append(dict(zip(headers, extracted)))
+        return headers, rows
 
     # Read sheets with row-3 headers (standard sheets)
     raw = {}
     for s in _wb.sheetnames:
         try:
             ws = _wb[s]
-            headers = [
-                str(cell.value).replace("\n", " ").strip() if cell.value else f"_col{i}"
-                for i, cell in enumerate(ws[3])
-            ]
-            rows = []
-            for row in ws.iter_rows(min_row=4, values_only=True):
-                if any(v is not None for v in row):
-                    rows.append(dict(zip(headers, row)))
+            _, rows = _read_ws_rows(ws, header_row=3, data_start=4)
             if rows:
                 df = pd.DataFrame(rows).dropna(how="all")
                 raw[s] = df
@@ -679,14 +711,7 @@ def load_excel(file):
         if "expense" in s.lower() or "Expense" in s:
             try:
                 ws = _wb[s]
-                headers = [
-                    str(cell.value).replace("\n", " ").strip() if cell.value else f"_col{i}"
-                    for i, cell in enumerate(ws[1])
-                ]
-                rows = []
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if any(v is not None for v in row):
-                        rows.append(dict(zip(headers, row)))
+                _, rows = _read_ws_rows(ws, header_row=1, data_start=2)
                 if rows:
                     exp_raw = pd.DataFrame(rows).dropna(how="all")
             except Exception:
@@ -976,8 +1001,14 @@ def load_excel(file):
                  "listing_fee","trade_disc","total_spend","roas","attributed_sales",
                  "influencer","reach","scope","window_days"])
 
-    # ── Expenses → exp_df ────────────────────────────────────────────────────
+    # ── Expenses → exp_df + stock/promo from Excel ───────────────────────────
     exp_rows = []
+    _xl_stock_val    = 0.0  # Active stock value (€) — read from Excel Cost Allocation section
+    _xl_promo_val    = 0.0  # Promo & External cost (€)
+    _xl_internal_val = 0.0  # Internal Consumption cost (€)
+    # Column that holds the Amount (€) in the allocation section is the same position as "Month"
+    # in the expense data rows (3rd column, index 2).
+    _amt_col = None  # resolved below once columns are known
     if exp_raw is not None:
         pl_col   = next((c for c in exp_raw.columns if "Product Line" in c), None)
         sku_col_e= next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
@@ -987,11 +1018,29 @@ def load_excel(file):
         mktg_col = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
         if mktg_col is None:
             mktg_col = next((c for c in exp_raw.columns if "Marketing" in c), None)
+        # The Amount (€) column in the allocation section aligns with the 3rd data column
+        _amt_col = mon_col  # both sit in the same column position (col C / index 2)
         for _, r in exp_raw.iterrows():
-            if pd.isna(r.get(pl_col)):
+            pl_val = r.get(pl_col)
+            if pl_val is None or (isinstance(pl_val, float) and pd.isna(pl_val)):
+                continue
+            pl_str = str(pl_val).strip()
+            # ── Cost Allocation section rows ──────────────────────────────────
+            if pl_str == "Active Stock":
+                _xl_stock_val = to_float(r.get(_amt_col))
+                continue
+            if pl_str == "Promo & External":
+                _xl_promo_val = to_float(r.get(_amt_col))
+                continue
+            if pl_str == "Internal Consumption":
+                _xl_internal_val = to_float(r.get(_amt_col))
+                continue
+            # Skip section header, note, and label rows
+            if (pl_str.startswith("📦") or pl_str.startswith("COST ALLOCATION")
+                    or pl_str == "Type" or pl_str.startswith("Enter ") or pl_str.startswith("Value of")):
                 continue
             exp_rows.append({
-                "product_line":    str(r.get(pl_col, "")).strip(),
+                "product_line":    pl_str,
                 "sku":             str(r.get(sku_col_e, "")).strip() if sku_col_e else "",
                 "month":           str(r.get(mon_col, "")).strip() if mon_col else "",
                 "production_cost": to_float(r.get(prod_col)),
@@ -1002,7 +1051,7 @@ def load_excel(file):
     exp_df = pd.DataFrame(exp_rows) if exp_rows else pd.DataFrame(
         columns=["product_line","sku","month","production_cost","logistics","marketing_promo"])
 
-    return prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df
+    return prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, _xl_stock_val, _xl_promo_val, _xl_internal_val
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1096,6 +1145,9 @@ mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","m
                                   "influencer","reach","scope","window_days"])
 stock_df = pd.DataFrame(columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
 exp_df   = pd.DataFrame(columns=["product_line","sku","month","production_cost","logistics","marketing_promo"])
+xl_stock_val    = 0.0  # Active stock value (€) — from Excel Cost Allocation section
+xl_promo_val    = 0.0  # Promo & External cost (€)
+xl_internal_val = 0.0  # Internal Consumption cost (€)
 
 # ── Auto-load from same folder first, then fall back to uploader ──────────
 _AUTO_PATH = pathlib.Path(__file__).parent / "Niamito_Master_Tables.xlsx"
@@ -1107,7 +1159,7 @@ elif _AUTO_PATH.exists():
 
 if _data_source is not None:
     try:
-        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df = load_excel(_data_source)
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, xl_stock_val, xl_promo_val, xl_internal_val = load_excel(_data_source)
         demo_mode = False
         _src_label = "auto-loaded from folder" if uploaded is None else "uploaded"
         st.sidebar.success(f"✅ Data {_src_label}")
@@ -1756,8 +1808,8 @@ with tab3:
             💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
             🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Prod. Cost (sold units only) − Logistics − Mktg &amp; Promo − Promo &amp; Internal = Gross Margin<br>
-            <span style='color:#7a5c3a;font-size:11.5px;'>💡 Use the expander below to enter active stock &amp; promo units — production cost will be allocated only to sold goods.</span>
+            📐 <b>Formula:</b> Gross Revenue − Production COGS − Logistics − Mktg &amp; Promo − Promo &amp; External − Internal Consumption = Gross Margin<br>
+            <span style='color:#7a5c3a;font-size:11.5px;'>💡 Use the expander below to enter the € value of active stock, promo, and internal consumption — these are deducted from Production COGS or shown as separate bars.</span>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1766,26 +1818,40 @@ with tab3:
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
 
-    # ── Stock & Promo Adjustment ───────────────────────────────────────────────
-    with st.expander("📦 Adjust for Active Stock & Promotions", expanded=False):
+    # ── Cost Allocation — read from Excel, with optional manual override ──────
+    _any_xl = xl_stock_val > 0 or xl_promo_val > 0 or xl_internal_val > 0
+    with st.expander(
+        f"📦 Cost Allocation  "
+        f"{'— values loaded from Excel ✅' if _any_xl else '— update in the Expenses sheet of your Excel'}",
+        expanded=not _any_xl,
+    ):
         st.markdown(
-            "<small style='color:#5a3e2b;'>Production cost covers all bottles made, not just sold ones. "
-            "Enter unsold stock and promo/internal use so the waterfall only expenses what was truly sold. "
-            "Active stock stays on the balance sheet as inventory value.</small>",
+            "<small style='color:#5a3e2b;'>Enter the <b>€ value of production cost</b> allocated to each bucket. "
+            "These are read from the <b>📦 COST ALLOCATION ADJUSTMENTS</b> section at the bottom of the "
+            "<b>Expenses</b> sheet — update there and re-upload, or override here temporarily.</small>",
             unsafe_allow_html=True,
         )
-        _adj_col1, _adj_col2 = st.columns(2)
-        with _adj_col1:
-            stock_units = st.number_input(
-                "🏭 Active stock (units in warehouse)",
-                min_value=0, value=0, step=100, key="wf_stock_units",
-                help="Bottles produced but not yet sold — their production cost stays as inventory, not an expense."
+        _c1, _c2, _c3 = st.columns(3)
+        with _c1:
+            stock_val = st.number_input(
+                "🏭 Active stock value (€)",
+                min_value=0.0, value=float(xl_stock_val), step=100.0, format="%.2f",
+                key="wf_stock_val",
+                help="Production cost of bottles in the warehouse — removed from P&L, shown as inventory on balance sheet."
             )
-        with _adj_col2:
-            promo_units = st.number_input(
-                "🎁 Promo & internal use (units given away)",
-                min_value=0, value=0, step=100, key="wf_promo_units",
-                help="Bottles used for sampling, events, or internal use — expensed as a separate promo cost line."
+        with _c2:
+            promo_val = st.number_input(
+                "🎁 Promo & external (€)",
+                min_value=0.0, value=float(xl_promo_val), step=100.0, format="%.2f",
+                key="wf_promo_val",
+                help="Production cost of bottles given away for sampling, events, or retail activation."
+            )
+        with _c3:
+            internal_val = st.number_input(
+                "🍽️ Internal consumption (€)",
+                min_value=0.0, value=float(xl_internal_val), step=100.0, format="%.2f",
+                key="wf_internal_val",
+                help="Production cost of bottles used for employee lunches or internal team use."
             )
 
     # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
@@ -1804,45 +1870,38 @@ with tab3:
     logistics  = exp_df["logistics"].sum()        if not exp_df.empty else 0
     mktg_promo = exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
 
-    # ── COGS allocation: split production cost across sold / promo / stock ─────
-    # Units sold (from primary sales data, 2026)
-    _sold_units   = p_data["bottles"].sum() if not p_data.empty else 0
-    _total_units  = max(_sold_units + stock_units + promo_units, 1)
-    _cost_per_unit = prod_cost / _total_units if prod_cost > 0 else 0
+    # ── COGS allocation: remove stock / promo / internal from production cost ──
+    # stock_val → balance sheet asset (not expensed)
+    # promo_val + internal_val → expensed but as separate P&L lines
+    cogs_adjusted = max(prod_cost - stock_val - promo_val - internal_val, 0)
+    total_exp = cogs_adjusted + promo_val + internal_val + logistics + mktg_promo
 
-    cogs_adjusted   = _cost_per_unit * _sold_units   # only sold units hit P&L
-    promo_prod_cost = _cost_per_unit * promo_units    # promo bottles: real cost, own bar
-    inventory_value = _cost_per_unit * stock_units    # stays on balance sheet
+    # Gross Margin = Revenue − all expensed costs
+    gross_margin = gross - cogs_adjusted - logistics - mktg_promo - promo_val - internal_val
 
-    total_exp = cogs_adjusted + promo_prod_cost + logistics + mktg_promo
-
-    # Gross Margin = Revenue − COGS (sold only) − Logistics − Mktg − Promo production cost
-    gross_margin = gross - cogs_adjusted - logistics - mktg_promo - promo_prod_cost
-
-    # ── Inventory callout (shown only when stock is entered) ───────────────────
-    if stock_units > 0 or promo_units > 0:
-        _inv_parts = []
-        if stock_units > 0:
-            _inv_parts.append(f"🏭 <b>Inventory value (not expensed):</b> €{inventory_value:,.0f} &nbsp;({int(stock_units):,} units × €{_cost_per_unit:.2f}/pc)")
-        if promo_units > 0:
-            _inv_parts.append(f"🎁 <b>Promo & internal cost:</b> €{promo_prod_cost:,.0f} &nbsp;({int(promo_units):,} units × €{_cost_per_unit:.2f}/pc)")
+    # ── Inventory / allocation callout ────────────────────────────────────────
+    if stock_val > 0:
         st.markdown(
-            f"<div style='background:#fdf6ee;border-left:3px solid {BROWN};padding:8px 14px;"
-            f"border-radius:5px;margin-bottom:8px;font-size:12.5px;color:#3a2e24;line-height:1.8;'>"
-            + " &nbsp;·&nbsp; ".join(_inv_parts) + "</div>",
+            f"<div style='background:#fdf6ee;border-left:3px solid {BROWN};padding:7px 14px;"
+            f"border-radius:5px;margin-bottom:8px;font-size:12.5px;color:#3a2e24;'>"
+            f"🏭 <b>Active stock value:</b> €{stock_val:,.2f} — removed from P&L, sits on the balance sheet as inventory."
+            f"</div>",
             unsafe_allow_html=True,
         )
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
     if total_exp > 0:
-        # Build bars — only add promo bar if promo units were entered
-        wf_labels  = ["Gross Revenue", "Prod. Cost (sold)", "Logistics", "Mktg & Promo"]
-        wf_measure = ["absolute",       "relative",          "relative",  "relative"]
-        wf_values  = [gross,            -cogs_adjusted,      -logistics,  -mktg_promo]
-        if promo_units > 0:
-            wf_labels.append("Promo & Internal")
+        wf_labels  = ["Gross Revenue", "Production COGS", "Logistics", "Mktg & Promo"]
+        wf_measure = ["absolute",       "relative",        "relative",  "relative"]
+        wf_values  = [gross,            -cogs_adjusted,    -logistics,  -mktg_promo]
+        if promo_val > 0:
+            wf_labels.append("Promo & External")
             wf_measure.append("relative")
-            wf_values.append(-promo_prod_cost)
+            wf_values.append(-promo_val)
+        if internal_val > 0:
+            wf_labels.append("Internal Consumption")
+            wf_measure.append("relative")
+            wf_values.append(-internal_val)
         wf_labels.append("Gross Margin")
         wf_measure.append("total")
         wf_values.append(gross_margin)
