@@ -6,11 +6,13 @@ import numpy as np
 from datetime import timedelta
 import warnings
 import os
+import openpyxl as _opxl
+import re as _re
 
 warnings.filterwarnings("ignore")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BRAND & STYLING (Retained from your original design)
+# BRAND & STYLING (Preserving your original aesthetic)
 # ──────────────────────────────────────────────────────────────────────────────
 BEIGE  = "#EDE3D8"
 BROWN  = "#2C1A0E"
@@ -23,7 +25,6 @@ MID    = "#6b4c30"
 
 st.set_page_config(page_title="Niamito · Business Intelligence", page_icon="🌿", layout="wide")
 
-# Custom CSS Injection (Identical to your original high-end aesthetic)
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -31,35 +32,124 @@ html, body, [class*="css"], .stApp {{ font-family: 'Inter', sans-serif !importan
 .stApp {{ background-color: #EEE6DC; }}
 section[data-testid="stSidebar"] {{ background: #1C1008 !important; }}
 div[data-testid="metric-container"] {{
-    background: #F9F4EF;
-    border: 1px solid rgba(44,26,14,0.10);
-    border-radius: 16px;
-    padding: 16px 20px;
-    box-shadow: 0 8px 20px rgba(44,26,14,0.07);
-}}
-/* iOS Segmented Control Styling */
-.stMain [data-testid="stRadio"] > div[role="radiogroup"] {{
-    display: inline-flex !important; flex-direction: row !important;
-    background: rgba(44,26,14,0.07) !important; border-radius: 10px !important; padding: 3px !important;
+    background: #F9F4EF; border: 1px solid rgba(44,26,14,0.10);
+    border-radius: 16px; padding: 16px 20px; box-shadow: 0 8px 20px rgba(44,26,14,0.07);
 }}
 </style>
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA LOADING ENGINE (Updated for CSV compatibility & CFO Logic)
+# CFO LOGIC: CATEGORY & SKU MAPPING
 # ──────────────────────────────────────────────────────────────────────────────
+def get_product_category(sku_name: str) -> str:
+    name = str(sku_name).lower()
+    if any(k in name for k in ["fresh meal", "hpp", "390"]): return "Niamito Fresh Meal"
+    if any(k in name for k in ["uht", "470", "bottle"]): return "Niamito Meal in a Bottle"
+    return "Niamito Oatmeal"
 
-@st.cache_data
-def load_niamito_csv_suite():
-    """
-    Loads all 6 CSV files with appropriate metadata row skips and 
-    performs the SKU mapping required for financial analysis.
-    """
-    # 1. Product Master (Key for reconciliation)
-    pm = pd.read_csv("Niamito_Master_Tables-9.xlsx - 📦 Product Master.csv", skiprows=2)
-    sku_map = pm.set_index('Retailer SKU Name')['Internal SKU Code'].to_dict()
+# ──────────────────────────────────────────────────────────────────────────────
+# THE EXCEL LOADER (Updated for CFO compatibility)
+# ──────────────────────────────────────────────────────────────────────────────
+def load_excel(file):
+    def _cell_val(v):
+        if v is None: return None
+        s = str(v)
+        if not s.startswith("="): return v
+        m = _re.search(r',\s*("([^"]*)"|([-]?\d+(?:\.\d+)?))\s*\)\s*$', s)
+        if m:
+            if m.group(2) is not None: return m.group(2)
+            try: return float(m.group(3))
+            except: pass
+        return None
+
+    _wb = _opxl.load_workbook(file, data_only=False)
+
+    def _read_ws_rows(ws, header_row: int, data_start: int):
+        headers = [(str(_cell_val(cell.value)).strip() if _cell_val(cell.value) else f"_col{i}")
+                   for i, cell in enumerate(ws[header_row])]
+        rows = []
+        for row in ws.iter_rows(min_row=data_start, values_only=False):
+            extracted = [_cell_val(cell.value) for cell in row]
+            if any(v is not None for v in extracted): rows.append(dict(zip(headers, extracted)))
+        return pd.DataFrame(rows)
+
+    # 1. Load Product Master & Create CFO SKU Map
+    ws_prod = next(s for s in _wb.sheetnames if "Product" in s)
+    prod_master = _read_ws_rows(_wb[ws_prod], header_row=3, data_start=4)
+    sku_map = prod_master.set_index('Retailer SKU Name')['Internal SKU Code'].to_dict()
+
+    # 2. Load Expenses (Material, Labour, Overhead)
+    ws_exp = next(s for s in _wb.sheetnames if "Expense" in s)
+    exp_df = _read_ws_rows(_wb[ws_exp], header_row=1, data_start=2)
+    # Reconcile SKU format: "APL05 (Apple)" -> "APL05"
+    exp_df['Internal_SKU'] = exp_df['SKU'].apply(lambda x: str(x).split(' ')[0])
+
+    # 3. Load Primary Sales
+    ws_prim = next(s for s in _wb.sheetnames if "Primary" in s)
+    prim_df = _read_ws_rows(_wb[ws_prim], header_row=3, data_start=4)
+    prim_df['week'] = pd.to_datetime(prim_df['Invoice Date'])
+    prim_df['Internal_SKU'] = prim_df['SKU'].map(sku_map)
+    prim_df['Month'] = prim_df['week'].dt.strftime('%b')
+
+    # 4. Load Marketing
+    ws_mkt = next(s for s in _wb.sheetnames if "Marketing" in s)
+    mkt_df = _read_ws_rows(_wb[ws_mkt], header_row=3, data_start=4)
+
+    # 5. Load Sell-out Template (Secondary)
+    ws_so = next(s for s in _wb.sheetnames if "Sell-out" in s or "Secondary" in s)
+    so_df = _read_ws_rows(_wb[ws_so], header_row=3, data_start=4)
+
+    return prim_df, so_df, mkt_df, exp_df, sku_map
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN DASHBOARD LOGIC
+# ──────────────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### 📥 Strategic Ingestion")
+    uploaded = st.file_uploader("Niamito Master Tables", type=["xlsx"])
+
+if uploaded:
+    prim_df, so_df, mkt_df, exp_df, sku_map = load_excel(uploaded)
     
-    # 2. Expenses (CFO Source of Truth)
+    # ── CFO METRIC CALCULATION ──
+    # Merging Sales and Expenses for the P&L view
+    total_rev = prim_df['Gross Revenue'].sum()
+    total_cogs = exp_df['Production cost (€)'].sum() + exp_df['Logistics & Distribution (€)'].sum()
+    gross_margin = total_rev - total_cogs
+    
+    # ── TABS ──
+    tab1, tab2, tab3 = st.tabs(["Overview", "Marketing", "Profitability"])
+
+    with tab1:
+        st.markdown("<h2>Niamito · Business Overview</h2>", unsafe_allow_html=True)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Pieces Sold", f"{prim_df['Quantity (PCS)'].sum():,.0f}")
+        k2.metric("Gross Revenue", f"€{total_rev:,.0f}")
+        k3.metric("Gross Margin", f"€{gross_margin:,.0f}", delta=f"{(gross_margin/total_rev)*100:.1f}%")
+        k4.metric("Rev per € Mkt", f"€{total_rev/max(mkt_df['TOTAL Spend (€)'].sum(), 1):.2f}")
+
+        # Graph: Revenue vs Category
+        prim_df['Category'] = prim_df['SKU'].apply(get_product_category)
+        cat_data = prim_df.groupby('Category')['Gross Revenue'].sum().reset_index()
+        fig = px.bar(cat_data, x='Category', y='Gross Revenue', color_discrete_sequence=[BROWN])
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor=CREAM)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+        st.markdown("### CFO Waterfall: Revenue to Net Margin")
+        # Waterfall visualizing value leakage
+        wf_fig = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["relative", "relative", "total"],
+            x=["Revenue", "Expenses", "Gross Margin"],
+            y=[total_rev, -total_cogs, gross_margin],
+            connector={"line":{"color":MID}},
+            decreasing={"marker":{"color":CORAL}},
+            increasing={"marker":{"color":GREEN}}
+        ))
+        st.plotly_chart(wf_fig, use_container_width=True)
+else:
+    st.info("Please upload the Niamito Master Tables Excel file to begin.")    # 2. Expenses (CFO Source of Truth)
     exp = pd.read_csv("Niamito_Master_Tables-9.xlsx - Expenses.csv")
     exp['SKU_Code'] = exp['SKU'].apply(lambda x: str(x).split(' ')[0])
     
