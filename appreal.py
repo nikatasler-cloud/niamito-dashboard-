@@ -1187,14 +1187,6 @@ with st.sidebar:
 
     st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
 
-    market_filter = st.multiselect(
-        "Markets",
-        options=["SI", "HR", "DE"],
-        default=["SI", "HR", "DE"],
-    )
-
-    st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
-
     period = st.sidebar.selectbox(
         "Period",
         ["This year (YTD)", "Last 3 months", "Last 6 months", "All data", "Custom range"],
@@ -1288,14 +1280,10 @@ if _data_source is not None:
 if demo_mode:
     prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
 
-# ── Apply market filter ───────────────────────────────
-if market_filter:
-    prim_f  = prim_df[prim_df["market"].isin(market_filter)]
-    so_f    = so_df[so_df["market"].isin(market_filter)]
-    mkt_f   = mkt_df[mkt_df["market"].isin(market_filter) | (mkt_df["market"] == "ALL")]
-    stock_f = stock_df[stock_df["market"].isin(market_filter)]
-else:
-    prim_f, so_f, mkt_f, stock_f = prim_df, so_df, mkt_df, stock_df
+prim_f  = prim_df.copy()
+so_f    = so_df.copy()
+mkt_f   = mkt_df.copy()
+stock_f = stock_df.copy()
 
 # Snapshot before category filter — used in SKU Performance to show all products
 prim_f_nokcat = prim_f.copy()
@@ -1356,7 +1344,6 @@ with col_title:
     st.markdown(
         f"<p style='color:{MID}; font-size:12px; margin-top:-6px;'>"
         f"{'Demo data — upload your Master Tables to see live numbers' if demo_mode else 'Live data'}"
-        f"  ·  Markets: {', '.join(market_filter) if market_filter else 'none'}"
         f"  ·  Period: {period}</p>",
         unsafe_allow_html=True,
     )
@@ -1567,11 +1554,41 @@ with tab2:
         _so2_top     = _so2.groupby("retailer")["bottles_sold"].sum().idxmax()
         _so2_top_u   = int(_so2.groupby("retailer")["bottles_sold"].sum().max())
 
+        # YoY comparison for secondary sales
+        def _prior_year_so(so_full, period_name, jan1_ty, today_ts, custom_range_val):
+            if period_name == "This year (YTD)":
+                py_start = jan1_ty - pd.DateOffset(years=1)
+                py_end   = today_ts - pd.DateOffset(years=1)
+            elif period_name == "Last 3 months":
+                py_start = today_ts - pd.DateOffset(months=3) - pd.DateOffset(years=1)
+                py_end   = today_ts - pd.DateOffset(years=1)
+            elif period_name == "Last 6 months":
+                py_start = today_ts - pd.DateOffset(months=6) - pd.DateOffset(years=1)
+                py_end   = today_ts - pd.DateOffset(years=1)
+            elif period_name == "Custom range" and custom_range_val and len(custom_range_val) == 2:
+                py_start = pd.Timestamp(custom_range_val[0]) - pd.DateOffset(years=1)
+                py_end   = pd.Timestamp(custom_range_val[1]) - pd.DateOffset(years=1)
+            else:
+                return pd.DataFrame()
+            if so_full.empty:
+                return pd.DataFrame()
+            return so_full[(so_full["week"] >= py_start) & (so_full["week"] <= py_end)]
+
+        _py_so = _prior_year_so(so_df, period, jan1_this_year, today,
+                                 custom_range if period == "Custom range" else None)
+        _py_so_units  = int(_py_so["bottles_sold"].sum()) if not _py_so.empty else 0
+        _py_so_stores = _py_so["retailer"].nunique() if not _py_so.empty else 0
+        _py_so_skus   = _py_so["sku_name"].nunique() if not _py_so.empty else 0
+
         so2_k1, so2_k2, so2_k3, so2_k4 = st.columns(4)
-        so2_k1.metric("Units Sold (sell-out)", f"{_so2_units:,}")
-        so2_k2.metric("Stores Reporting",      f"{_so2_stores}")
-        so2_k3.metric("SKUs Tracked",          f"{_so2_skus}")
-        so2_k4.metric("Top Store",             _so2_top,
+        so2_k1.metric("Units Sold (sell-out)", f"{_so2_units:,}",
+                      delta=_delta_str(_so2_units, _py_so_units) if _py_so_units else None,
+                      help=f"Prior year same period: {_py_so_units:,} units" if _py_so_units else None)
+        so2_k2.metric("Stores Reporting", f"{_so2_stores}",
+                      delta=_delta_str(_so2_stores, _py_so_stores) if _py_so_stores else None)
+        so2_k3.metric("SKUs Tracked", f"{_so2_skus}",
+                      delta=_delta_str(_so2_skus, _py_so_skus) if _py_so_skus else None)
+        so2_k4.metric("Top Store", _so2_top,
                       delta=f"{_so2_top_u:,} units",
                       help="Store with highest sell-out volume")
 
@@ -1682,26 +1699,52 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-        # ── Row 1: Market split + Channel breakdown ───────────────────────────
-        col_mkt_split, col_ch_bar = st.columns([0.38, 0.62])
+        # ── Secondary sell-out vs Marketing spend ─────────────────────────────
+        if not so_f.empty:
+            _so_mkt_mo = so_f.copy()
+            _so_mkt_mo["_mkey"] = _so_mkt_mo["week"].dt.to_period("M").astype(str)
+            _so_mkt_mo["month"] = _so_mkt_mo["week"].dt.strftime("%b %Y")
+            _so_units_mo = (_so_mkt_mo.groupby(["_mkey","month"])["bottles_sold"]
+                            .sum().reset_index().sort_values("_mkey"))
 
-        with col_mkt_split:
-            _mkt_spend = (mkt_f.groupby("market")["total_spend"].sum()
-                          .reset_index().sort_values("total_spend", ascending=False))
-            _mkt_colors = [MARKET_COLORS.get(m, BROWN) for m in _mkt_spend["market"]]
-            fig_mkt_split = go.Figure(go.Pie(
-                labels=_mkt_spend["market"],
-                values=_mkt_spend["total_spend"],
-                hole=0.52,
-                marker=dict(colors=_mkt_colors, line=dict(color=CREAM, width=3)),
-                textinfo="label+percent",
-                hovertemplate="<b>%{label}</b><br>\u20ac%{value:,.0f}  (%{percent})<extra></extra>",
+            _mk_mo2 = mkt_f.copy()
+            _mk_mo2["_mkey"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.to_period("M").astype(str)
+            _mk_mo2["month"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.strftime("%b %Y")
+            _mk_spend_mo2 = (_mk_mo2.groupby(["_mkey","month"])["total_spend"]
+                             .sum().reset_index().sort_values("_mkey"))
+
+            _so_mkt_merged = _so_units_mo.merge(
+                _mk_spend_mo2[["_mkey","month","total_spend"]], on=["_mkey","month"], how="outer"
+            ).sort_values("_mkey").fillna(0)
+
+            fig_so_mkt = go.Figure()
+            fig_so_mkt.add_trace(go.Bar(
+                x=_so_mkt_merged["month"], y=_so_mkt_merged["bottles_sold"],
+                name="Units Sold (secondary)", marker_color=GREEN, opacity=0.85, yaxis="y",
+                hovertemplate="%{x}: %{y:,} units<extra></extra>",
             ))
-            l_mkt_split = base_layout("Budget by Market", height=300, legend_below=False)
-            l_mkt_split["showlegend"] = False
-            fig_mkt_split.update_layout(**l_mkt_split)
-            st.plotly_chart(fig_mkt_split, use_container_width=True)
+            fig_so_mkt.add_trace(go.Scatter(
+                x=_so_mkt_merged["month"], y=_so_mkt_merged["total_spend"],
+                name="Marketing Spend", mode="lines+markers",
+                line=dict(color=CORAL, width=2),
+                marker=dict(size=7, color=CORAL),
+                yaxis="y2",
+                hovertemplate="%{x}: \u20ac%{y:,.0f} spend<extra></extra>",
+            ))
+            l_so_mkt = base_layout("Secondary Units Sold vs Marketing Spend", height=300)
+            l_so_mkt["yaxis"]["title"] = dict(text="Units Sold", font=dict(size=10))
+            l_so_mkt["yaxis2"] = dict(
+                overlaying="y", side="right", tickprefix="\u20ac",
+                showgrid=False, tickfont=dict(color=CORAL, size=10),
+            )
+            l_so_mkt["xaxis"]["tickangle"] = -30
+            l_so_mkt["legend"]["orientation"] = "h"
+            l_so_mkt["legend"]["y"] = -0.25
+            fig_so_mkt.update_layout(**l_so_mkt)
+            st.plotly_chart(fig_so_mkt, use_container_width=True)
 
+        # ── Channel breakdown (full width) ────────────────────────────────────
+        col_ch_bar = st.container()
         with col_ch_bar:
             ch_spend = mkt_f.groupby("channel").agg(
                 spend=("total_spend","sum"),
@@ -1895,8 +1938,8 @@ with tab4:
             unsafe_allow_html=True,
         )
 
-    _wf_opts = ["All markets"] + [m for m in ["SI","HR","DE"]
-                                   if m in (market_filter or ["SI","HR","DE"])]
+    _avail_mkt = sorted(prim_f["market"].unique().tolist()) if not prim_f.empty else []
+    _wf_opts = ["All markets"] + _avail_mkt
     wf_mkt = st.radio("Market:", options=_wf_opts, horizontal=True, key="wf_mkt")
 
     stock_val    = xl_stock_val
@@ -2065,7 +2108,10 @@ with tab5:
         )
 
         if not exp_df.empty:
-            _total_exp_sku = (exp_df["production_cost"].sum()
+            # Mirror the profitability waterfall: subtract balance-sheet stock from production cost
+            # (stock_val stays on balance sheet, not expensed; promo/internal ARE expensed)
+            _prod_cost_raw = exp_df["production_cost"].sum()
+            _total_exp_sku = (max(_prod_cost_raw - xl_stock_val, 0)
                               + exp_df["logistics"].sum()
                               + exp_df["marketing_promo"].sum())
             _total_rev_sku = sku_prim["gross"].sum()
