@@ -1393,7 +1393,12 @@ with tab1:
             return pd.DataFrame()
         return pf_full[(pf_full["week"] >= py_start) & (pf_full["week"] <= py_end)]
 
-    py_df     = _prior_year_prim(prim_df, period, jan1_this_year, today,
+    # Apply same category filter to prior-year baseline so the comparison is apples-to-apples.
+    # If the selected category didn't exist last year, py_df will be empty → no delta shown.
+    _prim_df_cmp = prim_df.copy()
+    if category_filter and len(category_filter) < len(ALL_CATEGORIES) and "category" in _prim_df_cmp.columns:
+        _prim_df_cmp = _prim_df_cmp[_prim_df_cmp["category"].isin(category_filter)]
+    py_df     = _prior_year_prim(_prim_df_cmp, period, jan1_this_year, today,
                                   custom_range if period == "Custom range" else None)
     py_pieces = py_df["bottles"].sum() if not py_df.empty else 0
     py_gross  = py_df["gross_revenue"].sum() if not py_df.empty else 0
@@ -1471,9 +1476,13 @@ with tab1:
                 marker_color=CATEGORY_COLORS.get(cat, BROWN),
                 hovertemplate=f"<b>{cat}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
             ))
+        _months_ordered = (cat_monthly[["_mkey","month"]].drop_duplicates()
+                           .sort_values("_mkey")["month"].tolist())
         l_sw = base_layout(f"Monthly Sales by Category ({y_label})", height=300)
         l_sw["barmode"] = "stack"
         l_sw["xaxis"]["tickangle"] = -30
+        l_sw["xaxis"]["categoryorder"] = "array"
+        l_sw["xaxis"]["categoryarray"] = _months_ordered
         if metric_mode != "Pieces sold":
             l_sw["yaxis"]["tickprefix"] = "\u20ac"
         fig_sw.update_layout(**l_sw)
@@ -1956,10 +1965,12 @@ with tab4:
 
     # ── Filter expenses by product category ──────────────────────────────────
     # Category → keyword in product_line column (expenses sheet)
+    # Keywords must match the product_line column values in the Expenses sheet:
+    #   "Niamito Fresh Meal", "Niamito Oatmeal", "Niamito UHT Meal"
     _CAT_PL_KW = {
-        "Niamito Fresh Meal":         ["plain"],
-        "Niamito Oatmeal":            ["oat"],
-        "Niamito Meal in a Bottle":   ["470", "de", "bottle"],
+        "Niamito Fresh Meal":         ["fresh meal", "fresh"],
+        "Niamito Oatmeal":            ["oatmeal", "oat"],
+        "Niamito Meal in a Bottle":   ["uht meal", "uht"],
     }
     if not exp_df.empty and category_filter and len(category_filter) < len(ALL_CATEGORIES):
         _kws = [kw for cat in category_filter for kw in _CAT_PL_KW.get(cat, [])]
