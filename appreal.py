@@ -674,10 +674,9 @@ def load_excel(file):
                 pass
         return None  # formula with no usable fallback
 
-    # Load without data_only so formula-embedded cached values can be extracted.
-    # This is more robust than data_only=True, which fails if the file was saved by openpyxl
-    # (which strips Excel-cached formula results).
-    _wb = _opxl.load_workbook(file, data_only=False)
+    # Use data_only=True so openpyxl returns cached formula results (e.g. =F2*2.98 → 2145.6).
+    # The workbook is always a user-supplied Excel file so cached values are present.
+    _wb = _opxl.load_workbook(file, data_only=True)
 
     def _read_ws_rows(ws, header_row: int, data_start: int):
         """Read a worksheet into a list of dicts, extracting values from formula wrappers."""
@@ -695,10 +694,14 @@ def load_excel(file):
 
     # Read sheets with row-3 headers (standard sheets)
     raw = {}
+    _PLAIN_HDR = ("primary", "secondary")   # these sheets have header in row 1
     for s in _wb.sheetnames:
         try:
             ws = _wb[s]
-            _, rows = _read_ws_rows(ws, header_row=3, data_start=4)
+            _use_plain = any(k in s.lower() for k in _PLAIN_HDR)
+            _, rows = _read_ws_rows(ws,
+                                    header_row=1 if _use_plain else 3,
+                                    data_start=2 if _use_plain else 4)
             if rows:
                 df = pd.DataFrame(rows).dropna(how="all")
                 raw[s] = df
@@ -790,7 +793,8 @@ def load_excel(file):
         gross_col  = next((c for c in prim_raw_df.columns if "Gross Revenue" in c), None)
 
         for _, r in prim_raw_df.iterrows():
-            if pd.isna(r.get(sku_col_p)):
+            _sku_val = r.get(sku_col_p)
+            if pd.isna(_sku_val) or str(_sku_val).strip() == "":
                 continue
             raw_date = r.get(date_col_p)
             try:
@@ -810,6 +814,8 @@ def load_excel(file):
             name  = str(r.get(name_col_p, sku)).strip() if name_col_p else sku
             bottles = int(to_float(r.get(btl_col_p)))
             gross   = to_float(r.get(gross_col))
+            if bottles == 0 and gross == 0:
+                continue
             prim_rows.append({
                 "week":           week,
                 "market":         mkt,
@@ -2190,6 +2196,127 @@ with tab4:
     else:
         st.info("No primary sales data available.")
 
+    # ── Section B: Sell-Out Store Performance ────────────────────────────────
+    st.markdown("<hr style='margin:24px 0 18px'>", unsafe_allow_html=True)
+    st.markdown("<h2>Sell-Out · Store Performance</h2>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
+        "Sell-out data submitted by retailers via the Sell-out Template. "
+        "Units sold at the shelf — downstream of primary sell-in.</p>",
+        unsafe_allow_html=True,
+    )
+
+    if not so_f.empty and "retailer" in so_f.columns:
+        _so = so_f.copy()
+        _total_so_units = int(_so["bottles_sold"].sum())
+        _n_stores        = _so["retailer"].nunique()
+        _n_skus_so       = _so["sku_name"].nunique()
+        _top_store_row   = _so.groupby("retailer")["bottles_sold"].sum().idxmax()
+        _top_store_units = int(_so.groupby("retailer")["bottles_sold"].sum().max())
+
+        so_k1, so_k2, so_k3, so_k4 = st.columns(4)
+        so_k1.metric("Total Sell-Out Units", f"{_total_so_units:,}")
+        so_k2.metric("Stores Reporting",      f"{_n_stores}")
+        so_k3.metric("SKUs Tracked",          f"{_n_skus_so}")
+        so_k4.metric("Top Store",             _top_store_row,
+                     delta=f"{_top_store_units:,} units",
+                     help="Store with highest sell-out volume in selected period")
+
+        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+
+        col_so_bar, col_so_cat = st.columns([0.60, 0.40])
+
+        with col_so_bar:
+            _store_rank = (
+                _so.groupby("retailer")["bottles_sold"].sum()
+                .reset_index()
+                .sort_values("bottles_sold", ascending=True)
+                .tail(20)
+            )
+            _so_bar_colors = [BROWN if i % 2 == 0 else LAVEN
+                              for i in range(len(_store_rank))]
+            fig_so_bar = go.Figure(go.Bar(
+                x=_store_rank["bottles_sold"],
+                y=_store_rank["retailer"],
+                orientation="h",
+                marker=dict(color=_so_bar_colors,
+                            line=dict(color=CREAM, width=0.5)),
+                text=[f"{int(v):,}" for v in _store_rank["bottles_sold"]],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>%{x:,} units<extra></extra>",
+            ))
+            l_so_bar = base_layout("Top 20 Stores by Units Sold", height=max(340, len(_store_rank) * 24))
+            l_so_bar["xaxis"]["title"] = "Units Sold"
+            l_so_bar["margin"]["l"] = 220
+            l_so_bar["margin"]["r"] = 60
+            fig_so_bar.update_layout(**l_so_bar)
+            st.plotly_chart(fig_so_bar, use_container_width=True)
+
+        with col_so_cat:
+            _cat_so = (
+                _so.groupby("sku_name")["bottles_sold"].sum()
+                .reset_index()
+                .sort_values("bottles_sold", ascending=False)
+            )
+            _cat_so_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN)
+                              for n in _cat_so["sku_name"]]
+            fig_so_cat = go.Figure(go.Pie(
+                labels=_cat_so["sku_name"],
+                values=_cat_so["bottles_sold"],
+                hole=0.50,
+                marker=dict(colors=_cat_so_colors,
+                            line=dict(color=CREAM, width=2)),
+                textinfo="percent",
+                hovertemplate="<b>%{label}</b><br>%{value:,} units  (%{percent})<extra></extra>",
+            ))
+            l_so_cat = base_layout("Sell-Out Mix by Product", height=340, legend_below=False)
+            l_so_cat["legend"] = dict(
+                orientation="v", x=1.02, y=0.5,
+                font=dict(size=9, color=BROWN),
+                bgcolor="rgba(0,0,0,0)",
+            )
+            fig_so_cat.update_layout(**l_so_cat)
+            st.plotly_chart(fig_so_cat, use_container_width=True)
+
+        # ── Market breakdown ────────────────────────────────────────────────
+        if _so["market"].nunique() > 1:
+            _mkt_so = (
+                _so.groupby("market")["bottles_sold"].sum()
+                .reset_index().sort_values("bottles_sold", ascending=False)
+            )
+            _mkt_so_colors = [MARKET_COLORS.get(m, BROWN) for m in _mkt_so["market"]]
+            col_sm1, col_sm2 = st.columns([0.4, 0.6])
+            with col_sm1:
+                fig_mkt_so = go.Figure(go.Bar(
+                    x=_mkt_so["market"], y=_mkt_so["bottles_sold"],
+                    marker=dict(color=_mkt_so_colors),
+                    text=[f"{int(v):,}" for v in _mkt_so["bottles_sold"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>%{y:,} units<extra></extra>",
+                ))
+                l_mkt_so = base_layout("Units by Market", height=280)
+                fig_mkt_so.update_layout(**l_mkt_so)
+                st.plotly_chart(fig_mkt_so, use_container_width=True)
+
+        # ── Sell-out store table ────────────────────────────────────────────
+        st.markdown(
+            f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:4px 0 6px;'>"
+            "All Stores — Sell-Out Detail</p>",
+            unsafe_allow_html=True,
+        )
+        _store_tbl = (
+            _so.groupby(["retailer", "market"])
+            .agg(units=("bottles_sold", "sum"), skus=("sku_name", "nunique"))
+            .reset_index()
+            .sort_values("units", ascending=False)
+            .rename(columns={"retailer": "Store", "market": "Market",
+                              "units": "Units Sold", "skus": "SKUs"})
+        )
+        _store_tbl["Units Sold"] = _store_tbl["Units Sold"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(_store_tbl, use_container_width=True, hide_index=True)
+
+    else:
+        st.info("No sell-out data available. Upload a Master Tables file with Sell-out Template data.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
