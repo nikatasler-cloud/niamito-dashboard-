@@ -47,9 +47,13 @@ SKU_COLORS    = {
 ALL_CATEGORIES = ["Niamito Oatmeal", "Niamito Fresh Meal", "Niamito Meal in a Bottle"]
 
 _CAT_KEYWORDS = {
+    # Oatmeal MUST be checked first — its products also contain "hpp" and flavour words
+    # that appear in Fresh Meal keywords, so order matters.
+    "Niamito Oatmeal":          ["oatmeal", "oat"],
     "Niamito Meal in a Bottle": ["uht", "470", "cocoa", "cookie", "vanilla", "meal in a bottle"],
-    "Niamito Fresh Meal":       ["fresh meal", "fresh", "hpp", "390", "apple", "blueberry", "spinach", "strawberry", "jaffa", "borovn", "jagod", "\u0161pina\u010d", "jabolč", "jaffa"],
-    # Oatmeal is default
+    "Niamito Fresh Meal":       ["fresh meal", "fresh", "hpp", "390", "apple", "blueberry",
+                                  "spinach", "strawberry", "jaffa", "borovn", "jagod",
+                                  "\u0161pina\u010d", "jabolč"],
 }
 
 CATEGORY_COLORS = {
@@ -64,7 +68,7 @@ def get_product_category(sku_name: str) -> str:
     for cat, keywords in _CAT_KEYWORDS.items():
         if any(k in name for k in keywords):
             return cat
-    return "Niamito Oatmeal"
+    return "Niamito Fresh Meal"  # safe fallback; Oatmeal is now matched explicitly above
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -1375,11 +1379,12 @@ with tab1:
     with col_trend:
         if not prim_f.empty:
             _pf_mo = prim_f.copy()
-            _pf_mo["month"] = _pf_mo["week"].dt.to_period("M").astype(str)
-            cat_monthly = _pf_mo.groupby(["month","category"]).agg(
+            _pf_mo["_mkey"] = _pf_mo["week"].dt.to_period("M").astype(str)  # sort key
+            _pf_mo["month"] = _pf_mo["week"].dt.strftime("%b %Y")            # display label
+            cat_monthly = _pf_mo.groupby(["_mkey", "month", "category"]).agg(
                 pieces=("bottles","sum"),
                 revenue=("gross_revenue","sum"),
-            ).reset_index().sort_values("month")
+            ).reset_index().sort_values("_mkey")
             y_col = "pieces" if metric_mode == "Pieces sold" else "revenue"
             y_label = "Pieces" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
             fig_sw = go.Figure()
@@ -1408,18 +1413,21 @@ with tab1:
         if not prim_f.empty and not mkt_f.empty:
             # Monthly sell-in
             prim_mo = prim_f.copy()
-            prim_mo["month"] = prim_mo["week"].dt.to_period("M").astype(str)
-            prim_monthly = prim_mo.groupby("month").agg(
+            prim_mo["_mkey"] = prim_mo["week"].dt.to_period("M").astype(str)
+            prim_mo["month"] = prim_mo["week"].dt.strftime("%b %Y")
+            prim_monthly = prim_mo.groupby(["_mkey", "month"]).agg(
                 pieces=("bottles","sum"), revenue=("gross_revenue","sum")
-            ).reset_index().sort_values("month")
+            ).reset_index().sort_values("_mkey")
 
             # Monthly marketing spend
             mkt_mo = mkt_f.copy()
-            mkt_mo["month"] = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.to_period("M").astype(str)
-            mkt_monthly = mkt_mo.groupby("month")["total_spend"].sum().reset_index().sort_values("month")
+            mkt_mo["_mkey"] = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.to_period("M").astype(str)
+            mkt_mo["month"]  = pd.to_datetime(mkt_mo["start"], errors="coerce").dt.strftime("%b %Y")
+            mkt_monthly = mkt_mo.groupby(["_mkey", "month"])["total_spend"].sum().reset_index().sort_values("_mkey")
 
-            # Merge on month
-            merged = prim_monthly.merge(mkt_monthly, on="month", how="outer").sort_values("month").fillna(0)
+            # Merge on sort key so month labels stay consistent
+            merged = prim_monthly.merge(mkt_monthly[["_mkey","month","total_spend"]],
+                                        on=["_mkey","month"], how="outer").sort_values("_mkey").fillna(0)
             si_y = "pieces" if metric_mode == "Pieces sold" else "revenue"
             si_label = "Pieces sold" if metric_mode == "Pieces sold" else "Revenue (\u20ac)"
 
@@ -1836,9 +1844,9 @@ with tab3:
             unsafe_allow_html=True,
         )
 
-    wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
-                                           if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
-                       horizontal=True, key="wf_mkt")
+    _wf_opts = ["All markets"] + [m for m in ["SI","HR","DE"]
+                                   if m in (market_filter or ["SI","HR","DE"])]
+    wf_mkt = st.radio("Market:", options=_wf_opts, horizontal=True, key="wf_mkt")
 
     # ── Cost Allocation — read from Excel, with optional manual override ──────
     _any_xl = xl_stock_val > 0 or xl_promo_val > 0 or xl_internal_val > 0
@@ -1878,9 +1886,9 @@ with tab3:
 
     # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
     _prim_2026 = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
-    p_data = _prim_2026 if wf_mkt == "ALL" else (
+    p_data = _prim_2026 if wf_mkt == "All markets" else (
         _prim_2026[_prim_2026["market"] == wf_mkt] if not _prim_2026.empty else _prim_2026)
-    m_data = mkt_f if wf_mkt == "ALL" else (
+    m_data = mkt_f if wf_mkt == "All markets" else (
         mkt_f[mkt_f["market"].isin([wf_mkt, "ALL"])] if not mkt_f.empty else mkt_f)
 
     gross      = p_data["gross_revenue"].sum() if not p_data.empty else 0
