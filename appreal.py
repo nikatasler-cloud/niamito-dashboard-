@@ -1747,15 +1747,17 @@ with tab3:
                       if len(_exp_months_sorted) >= 2
                       else (_exp_months_sorted[0] if _exp_months_sorted else "n/a"))
         _prim_2026_pieces = prim_f[prim_f["week"].dt.year == 2026]["bottles"].sum() if not prim_f.empty else 0
-        _cost_per_pc = (exp_df["production_cost"].sum() / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
+        _raw_prod_cost = exp_df["production_cost"].sum() if not exp_df.empty else 0
+        _cost_per_pc = (_raw_prod_cost / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
         st.markdown(
             f"""<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;
             border-radius:6px;margin-bottom:12px;font-size:13px;color:#3a2e24;line-height:1.9;'>
             📅 <b>Revenue:</b> 2026 primary invoices only &nbsp;·&nbsp;
             💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
-            🔩 <b>Prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Production Cost − Logistics − Mktg &amp; Promo = Gross Margin
+            🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
+            📐 <b>Formula:</b> Gross Revenue − Prod. Cost (sold units only) − Logistics − Mktg &amp; Promo − Promo &amp; Internal = Gross Margin<br>
+            <span style='color:#7a5c3a;font-size:11.5px;'>💡 Use the expander below to enter active stock &amp; promo units — production cost will be allocated only to sold goods.</span>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1763,6 +1765,28 @@ with tab3:
     wf_mkt = st.radio("Market:", options=[m for m in ["ALL","SI","HR","DE"]
                                            if m == "ALL" or m in (market_filter or ["SI","HR","DE"])],
                        horizontal=True, key="wf_mkt")
+
+    # ── Stock & Promo Adjustment ───────────────────────────────────────────────
+    with st.expander("📦 Adjust for Active Stock & Promotions", expanded=False):
+        st.markdown(
+            "<small style='color:#5a3e2b;'>Production cost covers all bottles made, not just sold ones. "
+            "Enter unsold stock and promo/internal use so the waterfall only expenses what was truly sold. "
+            "Active stock stays on the balance sheet as inventory value.</small>",
+            unsafe_allow_html=True,
+        )
+        _adj_col1, _adj_col2 = st.columns(2)
+        with _adj_col1:
+            stock_units = st.number_input(
+                "🏭 Active stock (units in warehouse)",
+                min_value=0, value=0, step=100, key="wf_stock_units",
+                help="Bottles produced but not yet sold — their production cost stays as inventory, not an expense."
+            )
+        with _adj_col2:
+            promo_units = st.number_input(
+                "🎁 Promo & internal use (units given away)",
+                min_value=0, value=0, step=100, key="wf_promo_units",
+                help="Bottles used for sampling, events, or internal use — expensed as a separate promo cost line."
+            )
 
     # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
     _prim_2026 = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
@@ -1776,19 +1800,52 @@ with tab3:
     mkt_spend  = m_data["total_spend"].sum() if not m_data.empty else 0
 
     # Pull expense totals
-    prod_cost = exp_df["production_cost"].sum() if not exp_df.empty else 0
-    logistics = exp_df["logistics"].sum()        if not exp_df.empty else 0
-    mktg_promo= exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
-    total_exp = prod_cost + logistics + mktg_promo
+    prod_cost  = exp_df["production_cost"].sum() if not exp_df.empty else 0
+    logistics  = exp_df["logistics"].sum()        if not exp_df.empty else 0
+    mktg_promo = exp_df["marketing_promo"].sum()  if not exp_df.empty else 0
 
-    # Gross Margin = Revenue − costs (trade discounts excluded — all zero)
-    gross_margin = gross - prod_cost - logistics - mktg_promo
+    # ── COGS allocation: split production cost across sold / promo / stock ─────
+    # Units sold (from primary sales data, 2026)
+    _sold_units   = p_data["bottles"].sum() if not p_data.empty else 0
+    _total_units  = max(_sold_units + stock_units + promo_units, 1)
+    _cost_per_unit = prod_cost / _total_units if prod_cost > 0 else 0
+
+    cogs_adjusted   = _cost_per_unit * _sold_units   # only sold units hit P&L
+    promo_prod_cost = _cost_per_unit * promo_units    # promo bottles: real cost, own bar
+    inventory_value = _cost_per_unit * stock_units    # stays on balance sheet
+
+    total_exp = cogs_adjusted + promo_prod_cost + logistics + mktg_promo
+
+    # Gross Margin = Revenue − COGS (sold only) − Logistics − Mktg − Promo production cost
+    gross_margin = gross - cogs_adjusted - logistics - mktg_promo - promo_prod_cost
+
+    # ── Inventory callout (shown only when stock is entered) ───────────────────
+    if stock_units > 0 or promo_units > 0:
+        _inv_parts = []
+        if stock_units > 0:
+            _inv_parts.append(f"🏭 <b>Inventory value (not expensed):</b> €{inventory_value:,.0f} &nbsp;({int(stock_units):,} units × €{_cost_per_unit:.2f}/pc)")
+        if promo_units > 0:
+            _inv_parts.append(f"🎁 <b>Promo & internal cost:</b> €{promo_prod_cost:,.0f} &nbsp;({int(promo_units):,} units × €{_cost_per_unit:.2f}/pc)")
+        st.markdown(
+            f"<div style='background:#fdf6ee;border-left:3px solid {BROWN};padding:8px 14px;"
+            f"border-radius:5px;margin-bottom:8px;font-size:12.5px;color:#3a2e24;line-height:1.8;'>"
+            + " &nbsp;·&nbsp; ".join(_inv_parts) + "</div>",
+            unsafe_allow_html=True,
+        )
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
     if total_exp > 0:
-        wf_labels  = ["Gross Revenue", "Production Cost", "Logistics", "Mktg & Promo", "Gross Margin"]
-        wf_measure = ["absolute",       "relative",        "relative",  "relative",      "total"]
-        wf_values  = [gross,            -prod_cost,        -logistics,  -mktg_promo,     gross_margin]
+        # Build bars — only add promo bar if promo units were entered
+        wf_labels  = ["Gross Revenue", "Prod. Cost (sold)", "Logistics", "Mktg & Promo"]
+        wf_measure = ["absolute",       "relative",          "relative",  "relative"]
+        wf_values  = [gross,            -cogs_adjusted,      -logistics,  -mktg_promo]
+        if promo_units > 0:
+            wf_labels.append("Promo & Internal")
+            wf_measure.append("relative")
+            wf_values.append(-promo_prod_cost)
+        wf_labels.append("Gross Margin")
+        wf_measure.append("total")
+        wf_values.append(gross_margin)
     else:
         wf_labels  = ["Gross Revenue", "Marketing Spend", "Gross Margin"]
         wf_measure = ["absolute",       "relative",        "total"]
