@@ -1747,7 +1747,7 @@ with tab3:
                       if len(_exp_months_sorted) >= 2
                       else (_exp_months_sorted[0] if _exp_months_sorted else "n/a"))
         _prim_2026_pieces = prim_f[prim_f["week"].dt.year == 2026]["bottles"].sum() if not prim_f.empty else 0
-        _cost_per_pc = (prod_cost / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
+        _cost_per_pc = (exp_df["production_cost"].sum() / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
         st.markdown(
             f"""<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;
             border-radius:6px;margin-bottom:12px;font-size:13px;color:#3a2e24;line-height:1.9;'>
