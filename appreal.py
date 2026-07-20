@@ -636,23 +636,26 @@ def load_excel(file):
             return 0.0
 
     CHANNEL_TYPE_MAP = {
-        # Slovenian originals → English display names
+        # Old Slovenian type names
         "Ekipa": "Team",
         "Produkcija": "Production",
+        "produkcija": "Production",
         "Digitalni marketing": "Digital",
         "Digitalni marketing AT": "Digital (AT)",
         "Dogodki & promocije": "Events",
         "Tradicionalni marketing": "Traditional",
         "Influencer": "Influencer",
-        # English pass-throughs (already correct)
+        # New type names (current format)
+        "Influencerji": "Influencer",
+        "Media buy": "Digital",
+        "Promocije - event": "Events",
+        "Promocije - materiali": "Production",
+        # English pass-throughs
         "Team": "Team",
         "Digital": "Digital",
         "Events": "Events",
         "Traditional": "Traditional",
         "Production": "Production",
-        "Digitalni marketing AT": "Digital-Intl",
-        "Dogodki & promocije": "Events",
-        "Tradicionalni marketing": "Traditional",
     }
 
     import openpyxl as _opxl, re as _re
@@ -1008,15 +1011,39 @@ def load_excel(file):
                 return default
             return row[idx] if idx < len(row) else default
 
+        def _parse_mkt_date(raw):
+            """Handle both Excel datetime objects and DD.MM.YYYY strings."""
+            if raw is None:
+                return ""
+            import datetime as _dt
+            if isinstance(raw, (_dt.datetime, _dt.date)):
+                return raw.strftime("%Y-%m-%d")
+            s = str(raw).strip()
+            # DD.MM.YYYY or DD.MM.YY
+            if _re.match(r"\d{1,2}\.\d{1,2}\.\d{2,4}", s):
+                parts = s.split(".")
+                try:
+                    d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                    if y < 100:
+                        y += 2000
+                    return f"{y:04d}-{m:02d}-{d:02d}"
+                except Exception:
+                    pass
+            return s[:10]
+
         for _row in _mkt_all_rows[3:]:
             if not any(v is not None for v in _row):
                 continue
-            cid = _mkt_get(_row, "Campaign ID")
-            if cid is None:
+            cid      = _mkt_get(_row, "Campaign ID")
+            cam_name = str(_mkt_get(_row, "Campaign Name", "")).strip()
+            # Skip rows with neither an ID nor a campaign name
+            if cid is None and not cam_name:
                 continue
             # Spend at column INDEX 6 always (first "TOTAL Spend (€)")
             total_spend_raw = _row[6] if len(_row) > 6 else None
             total = to_float(total_spend_raw)
+            if total == 0:
+                continue  # skip placeholder rows with no spend
 
             raw_type = str(_mkt_get(_row, "Type", "")).strip()
             channel  = CHANNEL_TYPE_MAP.get(raw_type, raw_type)
@@ -1029,8 +1056,8 @@ def load_excel(file):
 
             start_raw = _mkt_get(_row, "Start Date")
             end_raw   = _mkt_get(_row, "End Date")
-            start_str = str(start_raw)[:10] if start_raw else ""
-            end_str   = str(end_raw)[:10]   if end_raw   else ""
+            start_str = _parse_mkt_date(start_raw)
+            end_str   = _parse_mkt_date(end_raw)
 
             inf_val   = _mkt_get(_row, "Influencer Handle")
             reach_val = _mkt_get(_row, "Estimated Reach")
@@ -1046,8 +1073,8 @@ def load_excel(file):
             reach_clean = to_float(reach_val) or None
 
             mkt_rows.append({
-                "id":               str(cid).strip(),
-                "name":             str(_mkt_get(_row, "Campaign Name", "")).strip(),
+                "id":               str(cid).strip() if cid is not None else "",
+                "name":             cam_name,
                 "channel":          channel,
                 "market":           mkt_val,
                 "start":            start_str,
@@ -1133,12 +1160,17 @@ def load_excel(file):
 
     # ── Parse expense data rows (skip allocation section) ────────────────────
     if exp_raw is not None:
-        pl_col   = next((c for c in exp_raw.columns if "Product Line" in c), None)
-        sku_col_e= next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
-        mon_col  = next((c for c in exp_raw.columns if "Month" in c), None)
-        prod_col = next((c for c in exp_raw.columns if "Production cost" in c), None)
-        log_col  = next((c for c in exp_raw.columns if "Logistics" in c), None)
-        mktg_col = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
+        pl_col    = next((c for c in exp_raw.columns if "Product Line" in c), None)
+        sku_col_e = next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
+        mon_col   = next((c for c in exp_raw.columns if "Month" in c), None)
+        mat_col   = next((c for c in exp_raw.columns if "Material Cost" in c), None)
+        lab_col   = next((c for c in exp_raw.columns if "Labour Cost" in c or "Labor Cost" in c), None)
+        ovh_col   = next((c for c in exp_raw.columns if "Production Overhead" in c), None)
+        prod_col  = next((c for c in exp_raw.columns if "Production cost" in c
+                          and "Material" not in c and "Labour" not in c
+                          and "Labor" not in c and "Overhead" not in c), None)
+        log_col   = next((c for c in exp_raw.columns if "Logistics" in c), None)
+        mktg_col  = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
         if mktg_col is None:
             mktg_col = next((c for c in exp_raw.columns if "Marketing" in c), None)
         _SKIP_PREFIXES = ("📦", "COST ALLOCATION", "Enter ", "Month", "Active", "Promo &", "Internal")
@@ -1150,17 +1182,30 @@ def load_excel(file):
             # Skip allocation section rows (header, note, column labels, month rows)
             if pl_str.startswith(_SKIP_PREFIXES) or pl_str in _ALLOC_MONTHS:
                 continue
+            # Derive material / labour+overhead from dedicated columns when present;
+            # fall back to splitting production_cost 50/50 if columns are absent.
+            mat_val  = to_float(r.get(mat_col))  if mat_col  else None
+            lab_val  = to_float(r.get(lab_col))  if lab_col  else None
+            ovh_val  = to_float(r.get(ovh_col))  if ovh_col  else 0.0
+            prod_tot = to_float(r.get(prod_col))  if prod_col else (
+                           (mat_val or 0) + (lab_val or 0) + ovh_val)
+            if mat_val is None:
+                mat_val = prod_tot * 0.5
+            labour_overhead = prod_tot - mat_val  # labour + overhead combined
             exp_rows.append({
                 "product_line":    pl_str,
                 "sku":             str(r.get(sku_col_e, "")).strip() if sku_col_e else "",
                 "month":           str(r.get(mon_col, "")).strip() if mon_col else "",
-                "production_cost": to_float(r.get(prod_col)),
+                "material_cost":   mat_val,
+                "labour_overhead": labour_overhead,
+                "production_cost": prod_tot,
                 "logistics":       to_float(r.get(log_col)),
                 "marketing_promo": to_float(r.get(mktg_col)),
             })
 
     exp_df = pd.DataFrame(exp_rows) if exp_rows else pd.DataFrame(
-        columns=["product_line","sku","month","production_cost","logistics","marketing_promo"])
+        columns=["product_line","sku","month","material_cost","labour_overhead",
+                 "production_cost","logistics","marketing_promo"])
 
     return prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, _xl_stock_val, _xl_promo_val, _xl_internal_val
 
@@ -1248,7 +1293,7 @@ mkt_df   = pd.DataFrame(columns=["id","name","channel","market","start","end","m
                                   "listing_fee","trade_disc","total_spend","roas","attributed_sales",
                                   "influencer","reach","scope","window_days"])
 stock_df = pd.DataFrame(columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
-exp_df   = pd.DataFrame(columns=["product_line","sku","month","production_cost","logistics","marketing_promo"])
+exp_df   = pd.DataFrame(columns=["product_line","sku","month","material_cost","labour_overhead","production_cost","logistics","marketing_promo"])
 xl_stock_val    = 0.0  # Active stock value (€) — from Excel Cost Allocation section
 xl_promo_val    = 0.0  # Promo & External cost (€)
 xl_internal_val = 0.0  # Internal Consumption cost (€)
@@ -1939,7 +1984,7 @@ with tab4:
             💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
             🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Production Cost + Active Stock + Internal Consumption − Promo &amp; External − Logistics − Mktg &amp; Promo = Gross Margin
+            📐 <b>Formula:</b> Gross Revenue − Material Cost − Labour &amp; Overhead + Active Stock + Internal Consumption − Promo &amp; External − Logistics − Mktg &amp; Promo = Gross Margin
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1987,26 +2032,35 @@ with tab4:
         exp_df_pf = exp_df
 
     # Pull expense totals
-    prod_cost  = exp_df_pf["production_cost"].sum() if not exp_df_pf.empty else 0
+    mat_cost   = exp_df_pf["material_cost"].sum()    if not exp_df_pf.empty and "material_cost"   in exp_df_pf.columns else 0
+    lab_cost   = exp_df_pf["labour_overhead"].sum()  if not exp_df_pf.empty and "labour_overhead" in exp_df_pf.columns else 0
+    prod_cost  = exp_df_pf["production_cost"].sum()  if not exp_df_pf.empty else 0
+    # If dedicated columns are absent or both zero, use production_cost and split it
+    if mat_cost == 0 and lab_cost == 0 and prod_cost > 0:
+        mat_cost = prod_cost * 0.5
+        lab_cost = prod_cost - mat_cost
     logistics  = exp_df_pf["logistics"].sum()        if not exp_df_pf.empty else 0
     mktg_promo = exp_df_pf["marketing_promo"].sum()  if not exp_df_pf.empty else 0
 
     # ── P&L logic ─────────────────────────────────────────────────────────────
-    # Start from full production cost, then:
-    #   Active Stock      → asset created, adds back to margin (green bar)
-    #   Internal Consumption → value retained internally, adds back to margin (green bar)
-    #   Promo & External  → outflow, reduces margin (red bar)
-    total_exp    = prod_cost + logistics + mktg_promo + promo_val - stock_val - internal_val
-    gross_margin = gross - prod_cost + stock_val + internal_val - promo_val - logistics - mktg_promo
+    # Material Cost + Labour & Overhead = full production cost
+    # Active Stock      → asset created, adds back to margin (green bar)
+    # Internal Consumption → value retained internally, adds back to margin (green bar)
+    # Promo & External  → outflow, reduces margin (red bar)
+    total_exp    = (mat_cost + lab_cost) + logistics + mktg_promo + promo_val - stock_val - internal_val
+    gross_margin = gross - mat_cost - lab_cost + stock_val + internal_val - promo_val - logistics - mktg_promo
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
     if prod_cost > 0 or logistics > 0 or mktg_promo > 0:
-        wf_labels  = ["Gross Revenue", "Production Cost", "Active Stock", "Internal Consumption",
-                      "Promo & External", "Logistics", "Mktg & Promo"]
-        wf_measure = ["absolute",       "relative",       "relative",     "relative",
-                      "relative",        "relative",       "relative"]
-        wf_values  = [gross,            -prod_cost,       +stock_val,     +internal_val,
-                      -promo_val,        -logistics,       -mktg_promo]
+        wf_labels  = ["Gross Revenue", "🌾 Material Cost", "⚙️ Labour & Overhead",
+                      "Active Stock", "Internal Consumption", "Promo & External",
+                      "Logistics", "Mktg & Promo"]
+        wf_measure = ["absolute",      "relative",          "relative",
+                      "relative",      "relative",           "relative",
+                      "relative",      "relative"]
+        wf_values  = [gross,           -mat_cost,           -lab_cost,
+                      +stock_val,      +internal_val,        -promo_val,
+                      -logistics,      -mktg_promo]
         wf_labels.append("Gross Margin")
         wf_measure.append("total")
         wf_values.append(gross_margin)
@@ -2065,7 +2119,7 @@ with tab4:
         _pf4_k1.metric("Gross Revenue", f"€{_pf_summ_gross:,.0f}")
         _pf4_k2.metric("Net Cost Charge",
                         f"€{total_exp:,.0f}",
-                        help="Production Cost − Active Stock − Internal Consumption + Promo & External + Logistics + Mktg & Promo")
+                        help="Material Cost + Labour & Overhead − Active Stock − Internal Consumption + Promo & External + Logistics + Mktg & Promo")
         _pf4_k3.metric("Gross Margin",  f"€{gross_margin:,.0f}")
         _pf4_k4.metric("Margin %",      f"{gross_margin/max(gross,1)*100:.1f}%")
         st.markdown("")
