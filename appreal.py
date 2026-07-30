@@ -20,12 +20,12 @@ warnings.filterwarnings("ignore")
 # ──────────────────────────────────────────────────────────────────────────────
 BEIGE  = "#EDE3D8"
 BROWN  = "#2C1A0E"
-LAVEN  = "#B3B8D9"
-GREEN  = "#A8D99A"
-CORAL  = "#F07A72"
-YELLOW = "#EDD96A"
-CREAM  = "#F9F4EF"
-MID    = "#6b4c30"
+LAVEN  = "#9497C4"
+GREEN  = "#6BA547"
+CORAL  = "#D4663C"
+YELLOW = "#C8A84B"
+CREAM  = "#F0E8DC"
+MID    = "#7A5230"
 
 def hex_alpha(hex_color, alpha):
     """Convert a 6-digit hex color + float alpha to an rgba() string."""
@@ -75,7 +75,7 @@ def get_product_category(sku_name: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Niamito · Business Intelligence",
-    page_icon="🌿",
+    page_icon=":seedling:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -147,6 +147,30 @@ section[data-testid="stSidebar"] .stMarkdown small {
 /* hide sidebar collapse button */
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarHeader"] { display: none !important; }
+
+/* ── jump-to-market buttons: dark text on cream bg ── */
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button,
+section[data-testid="stSidebar"] .stButton button {
+    background: rgba(240,232,220,0.10) !important;
+    border: 1px solid rgba(240,232,220,0.18) !important;
+    border-radius: 10px !important;
+    color: rgba(240,232,220,0.90) !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.2px !important;
+}
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button:hover,
+section[data-testid="stSidebar"] .stButton button:hover {
+    background: rgba(240,232,220,0.20) !important;
+    border-color: rgba(240,232,220,0.35) !important;
+}
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button p,
+section[data-testid="stSidebar"] .stButton button p,
+section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button span,
+section[data-testid="stSidebar"] .stButton button span {
+    color: rgba(240,232,220,0.90) !important;
+    font-weight: 600 !important;
+}
 
 /* ── section labels ─────────────────────── */
 section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
@@ -738,25 +762,70 @@ def load_excel(file):
     mkt_raw_df, _  = find(["Marketing", "Calendar"])
     prim_raw_df, _ = find(["Primary", "Sales"])
 
-    # ── v9+ format: Primary Sales has headers in row 1, not row 3 ────────────
-    # Detect by checking if "Invoice Date" appears in the first cell of row 1.
+    # ── Sales Feed sheet → preferred primary sales source ────────────────────
+    # Header at row 4, data from row 5. Columns: Month, SKU Code, Product Name,
+    # Units Sold, Revenue ex-VAT (€), Product Line [auto], Year
+    _sf_prim_rows = []
+    _month_to_num = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
+                     "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
     for _sn in _wb.sheetnames:
-        if "primary" in _sn.lower() and "sales" in _sn.lower():
-            _ws_ps = _wb[_sn]
-            _r1c1  = _cell_val(_ws_ps.cell(1, 1).value)
-            if _r1c1 and "Invoice Date" in str(_r1c1):
-                _, _ps_rows = _read_ws_rows(_ws_ps, header_row=1, data_start=2)
-                if _ps_rows:
-                    prim_raw_df = pd.DataFrame(_ps_rows).dropna(how="all")
+        if "sales feed" in _sn.lower() or ("sales" in _sn.lower() and "feed" in _sn.lower()):
+            _ws_sf = _wb[_sn]
+            for _sfrow in _ws_sf.iter_rows(min_row=5, values_only=True):
+                _mo_raw, _sku_raw, _nm_raw, _units_raw, _rev_raw, _prod_line, _yr_raw = \
+                    (_sfrow[i] if i < len(_sfrow) else None for i in range(7))
+                # Skip rows without SKU or units
+                if not _sku_raw or not _units_raw:
+                    continue
+                _mo_str = str(_mo_raw).strip() if _mo_raw else ""
+                _mo_num = _month_to_num.get(_mo_str)
+                if not _mo_num:
+                    continue
+                try:
+                    _yr = int(float(_yr_raw))
+                except (TypeError, ValueError):
+                    continue
+                _sf_prim_rows.append({
+                    "Invoice Date": pd.Timestamp(_yr, _mo_num, 1),
+                    "Internal SKU Code": str(_sku_raw).strip(),
+                    "Product Name": str(_nm_raw).strip() if _nm_raw else str(_sku_raw).strip(),
+                    "Bottles sold": _units_raw,
+                    "Gross Revenue (€)": _rev_raw,
+                    "Product Line": str(_prod_line).strip() if _prod_line else "",
+                    "Market": "DE" if "- DE" in str(_sku_raw).upper() else "SI",
+                })
             break
+    if _sf_prim_rows:
+        prim_raw_df = pd.DataFrame(_sf_prim_rows)
 
-    # Find Secondary Sales sheet
+    # ── v9+ format: Primary Sales fallback (header in row 1) ─────────────────
+    elif prim_raw_df is None:
+        for _sn in _wb.sheetnames:
+            if "primary" in _sn.lower() and "sales" in _sn.lower():
+                _ws_ps = _wb[_sn]
+                _r1c1  = _cell_val(_ws_ps.cell(1, 1).value)
+                if _r1c1 and "Invoice Date" in str(_r1c1):
+                    _, _ps_rows = _read_ws_rows(_ws_ps, header_row=1, data_start=2)
+                    if _ps_rows:
+                        prim_raw_df = pd.DataFrame(_ps_rows).dropna(how="all")
+                break
+
+    # Find Secondary Sales sheet — detect whether row 1 is notes or real header
     sec_raw_df = None
     sec_name = None
-    for name, df in raw.items():
-        if "secondary" in name.lower():
-            sec_raw_df = df
-            sec_name = name
+    for _sn in _wb.sheetnames:
+        if "secondary" in _sn.lower():
+            sec_name = _sn
+            _ws_sec = _wb[_sn]
+            _r1c1_sec = _cell_val(_ws_sec.cell(1, 1).value)
+            if _r1c1_sec and "DATE" in str(_r1c1_sec).upper():
+                # Row 1 is the real header
+                _, _sec_rows = _read_ws_rows(_ws_sec, header_row=1, data_start=2)
+            else:
+                # Row 1 is a notes/instruction row; real header is row 2
+                _, _sec_rows = _read_ws_rows(_ws_sec, header_row=2, data_start=3)
+            if _sec_rows:
+                sec_raw_df = pd.DataFrame(_sec_rows).dropna(how="all")
             break
 
     # Find Sell-out Template sheet
@@ -906,25 +975,43 @@ def load_excel(file):
     # ── Secondary Sales → so_df ───────────────────────────────────────────────
     so_rows = []
 
-    def _parse_secondary_row(r, date_col, retail_col, sku_col_s, pcs_col):
-        raw_date = r.get(date_col)
-        try:
-            week = pd.to_datetime(raw_date, errors="coerce")
-        except Exception:
-            week = pd.NaT
+    def _parse_sec_date(raw_date):
+        """Parse Secondary Sales date: handles DD.MM.YYYY / D.M.YY strings and datetime objects."""
+        if raw_date is None:
+            return pd.NaT
+        import datetime as _dt2
+        if isinstance(raw_date, (_dt2.datetime, _dt2.date)):
+            return pd.Timestamp(raw_date)
+        s = str(raw_date).strip()
+        if _re.match(r"\d{1,2}\.\d{1,2}\.\d{2,4}", s):
+            parts = s.split(".")
+            try:
+                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                if y < 100:
+                    y += 2000
+                return pd.Timestamp(y, m, d)
+            except Exception:
+                pass
+        return pd.to_datetime(s, errors="coerce")
+
+    def _parse_secondary_row(r, date_col, retail_col, sku_col_s, pcs_col, rev_col=None, mkt_col=None):
+        week     = _parse_sec_date(r.get(date_col))
         retailer = str(r.get(retail_col, "")).strip() if retail_col else ""
         sku_raw  = str(r.get(sku_col_s, "")).strip() if sku_col_s else ""
         prod_info = prod_by_ret_name.get(sku_raw.lower(), {"sku_id": sku_raw, "sku_name": sku_raw})
         units = int(to_float(r.get(pcs_col)))
+        rev   = to_float(r.get(rev_col)) if rev_col else 0.0
+        mkt_raw = str(r.get(mkt_col, "")).strip().upper() if mkt_col else "SI"
+        market  = mkt_raw if mkt_raw in ("SI", "HR", "DE", "PL", "CH", "AT", "ME") else "SI"
         return {
             "week":            week,
-            "market":          "SI",
+            "market":          market,
             "retailer":        retailer,
             "sku_id":          prod_info["sku_id"],
             "sku_name":        prod_info["sku_name"],
             "bottles_sold":    units,
-            "consumer_price":  0.0,
-            "sellout_revenue": 0.0,
+            "consumer_price":  round(rev / units, 2) if units > 0 and rev > 0 else 0.0,
+            "sellout_revenue": round(rev, 2),
             "funnel_type":     "3-tier",
         }
 
@@ -933,10 +1020,12 @@ def load_excel(file):
         retail_col_s = next((c for c in sec_raw_df.columns if "RETAIL" in c.upper() or "Store" in c or "Retail" in c), None)
         sku_col_s    = next((c for c in sec_raw_df.columns if c.upper() == "SKU" or "SKU" in c), None)
         pcs_col_s    = next((c for c in sec_raw_df.columns if c.upper() == "PCS" or "PCS" in c or "Units" in c), None)
+        rev_col_s    = next((c for c in sec_raw_df.columns if "Revenue" in c or "REVENUE" in c.upper()), None)
+        mkt_col_s    = next((c for c in sec_raw_df.columns if "Channel" in c or "CHANNEL" in c.upper() or "Market" in c), None)
         for _, r in sec_raw_df.iterrows():
             if pd.isna(r.get(pcs_col_s)):
                 continue
-            row_data = _parse_secondary_row(r, date_col_s, retail_col_s, sku_col_s, pcs_col_s)
+            row_data = _parse_secondary_row(r, date_col_s, retail_col_s, sku_col_s, pcs_col_s, rev_col_s, mkt_col_s)
             if row_data["bottles_sold"] > 0:
                 so_rows.append(row_data)
 
@@ -1051,7 +1140,7 @@ def load_excel(file):
             mkt_val = str(_mkt_get(_row, "Market", "")).strip()
             if mkt_val.upper() in ("SLO", "SLOVENIJA"):
                 mkt_val = "SI"
-            if mkt_val not in ("SI", "HR", "DE"):
+            if mkt_val not in ("SI", "HR", "DE", "PL", "CH", "AT", "ME"):
                 mkt_val = "SI"
 
             start_raw = _mkt_get(_row, "Start Date")
@@ -1160,20 +1249,23 @@ def load_excel(file):
 
     # ── Parse expense data rows (skip allocation section) ────────────────────
     if exp_raw is not None:
-        pl_col    = next((c for c in exp_raw.columns if "Product Line" in c), None)
-        sku_col_e = next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
-        mon_col   = next((c for c in exp_raw.columns if "Month" in c), None)
-        mat_col   = next((c for c in exp_raw.columns if "Material Cost" in c), None)
-        lab_col   = next((c for c in exp_raw.columns if "Labour Cost" in c or "Labor Cost" in c), None)
-        ovh_col   = next((c for c in exp_raw.columns if "Production Overhead" in c), None)
-        prod_col  = next((c for c in exp_raw.columns if "Production cost" in c
-                          and "Material" not in c and "Labour" not in c
-                          and "Labor" not in c and "Overhead" not in c), None)
-        log_col   = next((c for c in exp_raw.columns if "Logistics" in c), None)
-        mktg_col  = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
+        pl_col        = next((c for c in exp_raw.columns if "Product Line" in c), None)
+        sku_col_e     = next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
+        mon_col       = next((c for c in exp_raw.columns if "Month" in c), None)
+        mat_col       = next((c for c in exp_raw.columns if "Material Cost" in c), None)
+        lab_col       = next((c for c in exp_raw.columns if "Labour Cost" in c or "Labor Cost" in c), None)
+        ovh_col       = next((c for c in exp_raw.columns if "Production Overhead" in c), None)
+        prod_col      = next((c for c in exp_raw.columns if "Production cost" in c
+                              and "Material" not in c and "Labour" not in c
+                              and "Labor" not in c and "Overhead" not in c), None)
+        log_col       = next((c for c in exp_raw.columns if "Logistics" in c), None)
+        mktg_col      = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
         if mktg_col is None:
-            mktg_col = next((c for c in exp_raw.columns if "Marketing" in c), None)
-        _SKIP_PREFIXES = ("📦", "COST ALLOCATION", "Enter ", "Month", "Active", "Promo &", "Internal")
+            mktg_col  = next((c for c in exp_raw.columns if "Marketing" in c), None)
+        promo_u_col   = next((c for c in exp_raw.columns if "Promotional Units" in c), None)
+        act_stock_col = next((c for c in exp_raw.columns if "Active Stock" in c), None)
+        int_usage_col = next((c for c in exp_raw.columns if "Internal Usage" in c), None)
+        _SKIP_PREFIXES = ("COST ALLOCATION", "Enter ", "Month", "Active", "Promo &", "Internal")
         for _, r in exp_raw.iterrows():
             pl_val = r.get(pl_col)
             if pl_val is None or (isinstance(pl_val, float) and pd.isna(pl_val)):
@@ -1201,11 +1293,15 @@ def load_excel(file):
                 "production_cost": prod_tot,
                 "logistics":       to_float(r.get(log_col)),
                 "marketing_promo": to_float(r.get(mktg_col)),
+                "promo_units":     to_float(r.get(promo_u_col))   if promo_u_col   else 0.0,
+                "active_stock":    abs(to_float(r.get(act_stock_col))) if act_stock_col else 0.0,
+                "internal_usage":  abs(to_float(r.get(int_usage_col))) if int_usage_col else 0.0,
             })
 
     exp_df = pd.DataFrame(exp_rows) if exp_rows else pd.DataFrame(
         columns=["product_line","sku","month","material_cost","labour_overhead",
-                 "production_cost","logistics","marketing_promo"])
+                 "production_cost","logistics","marketing_promo",
+                 "promo_units","active_stock","internal_usage"])
 
     return prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, _xl_stock_val, _xl_promo_val, _xl_internal_val
 
@@ -1311,12 +1407,12 @@ if _data_source is not None:
         prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, xl_stock_val, xl_promo_val, xl_internal_val = load_excel(_data_source)
         demo_mode = False
         _src_label = "auto-loaded from folder" if uploaded is None else "uploaded"
-        st.sidebar.success(f"✅ Data {_src_label}")
+        st.sidebar.success(f"Data {_src_label}")
         if not prim_df.empty and "week" in prim_df.columns:
             latest_prim = prim_df["week"].max()
             if pd.notna(latest_prim):
                 st.sidebar.caption(
-                    f"📦 Primary Sales: up to {latest_prim.strftime('%b %Y')}. "
+                    f"Primary Sales: up to {latest_prim.strftime('%b %Y')}. "
                     "Replace the Excel file to update."
                 )
     except Exception as e:
@@ -1380,6 +1476,25 @@ elif period == "Last 6 months":
 # "All data" → no filter
 
 
+# ── Sidebar: market jump nav (always visible, regardless of active tab) ───────
+_nav_flags  = {"SI": "🇸🇮", "HR": "🇭🇷", "ME": "🇲🇪", "DE": "🇩🇪", "PL": "🇵🇱", "CH": "🇨🇭", "AT": "🇦🇹"}
+_MARKET_ORDER = ["SI", "HR", "DE", "PL", "CH", "ME", "AT"]
+_nav_markets = [m for m in _MARKET_ORDER if not so_df.empty and "market" in so_df.columns and m in so_df["market"].values] if not so_df.empty else []
+if _nav_markets:
+    with st.sidebar:
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid rgba(237,227,216,0.18);margin:12px 0 10px;'>"
+            "<p style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+            "color:rgba(237,227,216,0.55);margin:0 0 6px;'>Jump to market</p>",
+            unsafe_allow_html=True,
+        )
+        if st.button("🌍  All Markets", key="jnav___all__", use_container_width=True):
+            st.session_state["_scroll_target"] = "so-__all__"
+        for _nm in _nav_markets:
+            _nlabel = f"{_nav_flags.get(_nm,'')}  {_nm}"
+            if st.button(_nlabel, key=f"jnav_{_nm}", use_container_width=True):
+                st.session_state["_scroll_target"] = f"so-{_nm}"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1399,9 +1514,8 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # ──────────────────────────────────────────────────────────────────────────────
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "Primary Sales",
-    "Secondary Sales",
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Sales",
     "Marketing",
     "Profitability",
     "SKU Performance",
@@ -1409,9 +1523,22 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 · OVERVIEW
+# TAB 1 · SALES  (Level 1 Sell-In  +  Level 2 Sell-Out)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
+    # Section header — clearly Level 1
+    st.markdown(
+        f"<div style='background:rgba(44,26,14,0.06);border-left:4px solid {BROWN};"
+        f"border-radius:6px;padding:10px 16px;margin-bottom:10px;'>"
+        f"<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+        f"color:{MID};'>Level 1 — Sell-In</span>"
+        f"<h2 style='margin:2px 0 2px;font-size:20px;color:#1C1008;'>Invoiced Sales Command Center</h2>"
+        f"<p style='font-size:12px;color:{MID};margin:0;'>"
+        f"Factory invoices to distributor/retailer. These are your billed revenues — "
+        f"what you have actually charged, regardless of what has sold through to consumers.</p>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
     # ── KPI calculations ─────────────────────────────────────────────────────
     total_gross   = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
@@ -1455,8 +1582,8 @@ with tab1:
         pct  = diff / prev * 100
         sign = "+" if diff >= 0 else "-"
         if is_currency:
-            return f"{sign}€{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs prior yr)"
-        return f"{sign}{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs prior yr)"
+            return f"{sign}€{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs same period last yr)"
+        return f"{sign}{abs(diff):,.0f}  ({sign}{abs(pct):.1f}% vs same period last yr)"
 
     pieces_delta = _delta_str(prim_pieces, py_pieces)
     gross_delta  = _delta_str(total_gross, py_gross, is_currency=True)
@@ -1477,27 +1604,46 @@ with tab1:
         _run_rate_rev = 0.0
 
     # ── KPI row ───────────────────────────────────────────────────────────────
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Pieces Sold", f"{prim_pieces:,.0f}", delta=pieces_delta,
-              help=f"Prior year same period: {py_pieces:,.0f} pcs" if py_pieces else None)
-    k2.metric("Gross Revenue", f"€{total_gross:,.0f}", delta=gross_delta,
-              help=f"Prior year same period: €{py_gross:,.0f}" if py_gross else None)
-    k3.metric("Avg Price / Piece", f"€{avg_price_pc:.2f}")
+    ANNUAL_GOAL = 300_000
+    _ytd_2026 = int(prim_f[prim_f["week"].dt.year == 2026]["bottles"].sum()) if not prim_f.empty else 0
+    _goal_pct  = min(_ytd_2026 / ANNUAL_GOAL * 100, 100) if ANNUAL_GOAL > 0 else 0.0
+    _remaining = max(ANNUAL_GOAL - _ytd_2026, 0)
+
+    def _kpi_card(label, value, delta_str=None, color=GREEN, delta_good=True):
+        _delta_html = (
+            f"<div style='font-size:11px;color:rgba(255,255,255,0.75);margin-top:6px;"
+            f"font-weight:500;'>{delta_str}</div>"
+            if delta_str else ""
+        )
+        return (
+            f"<div style='background:{color};border-radius:12px;padding:16px 14px;"
+            f"min-height:108px;box-shadow:0 3px 10px rgba(0,0,0,0.18);'>"
+            f"<div style='font-size:9px;font-weight:700;color:rgba(255,255,255,0.65);"
+            f"letter-spacing:1.8px;text-transform:uppercase;margin-bottom:8px;'>{label}</div>"
+            f"<div style='font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.2;'>{value}</div>"
+            f"{_delta_html}</div>"
+        )
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.markdown(_kpi_card("Pieces Sold", f"{prim_pieces:,.0f}", pieces_delta, color=GREEN,
+                           delta_good=not pieces_delta.startswith("-") if pieces_delta else True),
+                unsafe_allow_html=True)
+    k2.markdown(_kpi_card("Gross Revenue", f"€{total_gross:,.0f}", gross_delta, color=CORAL,
+                           delta_good=not gross_delta.startswith("-") if gross_delta else True),
+                unsafe_allow_html=True)
+    k3.markdown(_kpi_card("Avg Price / Piece", f"€{avg_price_pc:.2f}", color=YELLOW),
+                unsafe_allow_html=True)
     if _run_rate_rev > 0:
         _rr_label = f"€{_run_rate_rev:,.0f}" if metric_mode != "Pieces sold" else f"{_run_rate_pcs:,}"
-        k4.metric("2026 Full-Year Run Rate",
-                  _rr_label,
-                  help=f"Based on {_n_actual_mo} month(s) of 2026 data × 12. Not a guaranteed forecast.")
+        k4.markdown(_kpi_card("Run Rate 2026", _rr_label, color=LAVEN), unsafe_allow_html=True)
+    _goal_delta = f"−{_remaining:,} to go" if _remaining > 0 else "Goal reached"
+    k5.markdown(_kpi_card("Goal Progress (300k)", f"{_goal_pct:.1f}%", _goal_delta,
+                           color=BROWN if _goal_pct < 50 else (YELLOW if _goal_pct < 85 else GREEN),
+                           delta_good=False),
+                unsafe_allow_html=True)
 
     st.markdown("")
 
-    if not demo_mode and not prim_f.empty:
-        _latest_inv   = prim_f["week"].max()
-        _earliest_inv = prim_f["week"].min()
-        st.info(
-            f"📦 **Primary sales data:** {_earliest_inv.strftime('%b %Y') if pd.notna(_earliest_inv) else '?'}"
-            f" → {_latest_inv.strftime('%b %Y') if pd.notna(_latest_inv) else '?'}"
-        )
 
     # ── Monthly sales by category (full width) ───────────────────────────────
     if not prim_f.empty:
@@ -1552,18 +1698,113 @@ with tab1:
         _fc_mkeys = [mk for mk in _all_2026_mkeys if mk not in _actual_mkeys]
         _fc_labels = [pd.Period(mk).strftime("%b %Y") for mk in _fc_mkeys]
 
-        # Slider in a narrow column so it doesn't span the full page
-        _fc_sl_col, _ = st.columns([0.35, 0.65])
-        with _fc_sl_col:
-            _growth_pct = st.slider(
-                "Monthly growth assumption (%)",
-                min_value=-10, max_value=30, value=5, step=1,
-                key="fc_growth_slider",
-                help="Compounded month-over-month from the last actual month.",
+        # Forecast controls
+        _fc_ctrl1, _fc_ctrl2, _fc_ctrl3 = st.columns([0.28, 0.28, 0.44])
+        with _fc_ctrl1:
+            _fc_type = st.selectbox(
+                "Forecast method",
+                ["Seasonal (prior year)", "Growth rate %", "Linear trend",
+                 "ETS (exp. smoothing)", "Flat (last month)", "Goal-paced (300k)"],
+                key="fc_type_sel",
             )
-        _growth_rate = _growth_pct / 100.0
+        with _fc_ctrl2:
+            _fc_scenario = st.selectbox(
+                "Scenario",
+                ["Base", "Optimistic (+20%)", "Conservative (−20%)"],
+                key="fc_scenario_sel",
+            )
+
         _last_actual = float(_fc_act[_fc_y].iloc[-1]) if not _fc_act.empty else 0.0
-        _fc_values = [_last_actual * ((1 + _growth_rate) ** (i + 1)) for i in range(len(_fc_labels))]
+        _growth_pct  = 0    # overwritten if method is "Growth rate %"
+        _yoy         = None # overwritten if method is "Seasonal (prior year)"
+
+        # Compute forecast values by method
+        if _fc_type == "Growth rate %":
+            with _fc_ctrl3:
+                _growth_pct = st.slider(
+                    "Monthly growth (%)",
+                    min_value=-10, max_value=30, value=5, step=1,
+                    key="fc_growth_slider",
+                    help="Compounded month-over-month from the last actual month.",
+                )
+            _growth_rate = _growth_pct / 100.0
+            _fc_values = [_last_actual * ((1 + _growth_rate) ** (i + 1))
+                          for i in range(len(_fc_labels))]
+
+        elif _fc_type == "Linear trend":
+            import numpy as _np
+            _x = list(range(len(_fc_act)))
+            _y = _fc_act[_fc_y].tolist()
+            if len(_x) >= 2:
+                _coeffs = _np.polyfit(_x, _y, 1)
+                _fc_values = [max(0.0, _np.polyval(_coeffs, len(_x) + i))
+                              for i in range(len(_fc_labels))]
+            else:
+                _fc_values = [_last_actual] * len(_fc_labels)
+
+        elif _fc_type == "Seasonal (prior year)":
+            # Use same calendar month from prior year, scaled by observed YoY growth
+            import numpy as _np
+            _all_hist = (prim_df.copy()
+                         .assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str))
+                         .groupby("_mkey").agg(pieces=("bottles","sum"),
+                                                revenue=("gross_revenue","sum"))
+                         .reset_index())
+            _all_hist["year"]  = _all_hist["_mkey"].str[:4].astype(int)
+            _all_hist["mo"]    = _all_hist["_mkey"].str[5:].astype(int)
+            _py_tbl = _all_hist[_all_hist["year"] == _fc_act["_mkey"].str[:4].astype(int).max() - 1].set_index("mo")
+            # YoY growth factor from overlapping months (current year vs prior year)
+            _act_mo = _fc_act.copy()
+            _act_mo["mo"] = _act_mo["_mkey"].str[5:].astype(int)
+            _overlap = set(_py_tbl.index) & set(_act_mo["mo"])
+            if _overlap and not _py_tbl.empty:
+                _cur_sum = _act_mo[_act_mo["mo"].isin(_overlap)][_fc_y].sum()
+                _pyr_sum = _py_tbl.loc[list(_overlap), _fc_y].sum()
+                _yoy     = _cur_sum / _pyr_sum if _pyr_sum > 0 else 1.15
+            else:
+                _yoy = 1.15  # assume +15% growth if no overlap
+            _fc_values = []
+            for _mk in _fc_mkeys:
+                _mn = int(_mk[5:])
+                if _mn in _py_tbl.index:
+                    _fc_values.append(float(_py_tbl.loc[_mn, _fc_y]) * _yoy)
+                else:
+                    _fc_values.append(_last_actual * _yoy)
+
+        elif _fc_type == "ETS (exp. smoothing)":
+            # Holt's double exponential smoothing (level + trend)
+            # L[t] = α·y[t] + (1−α)·(L[t−1]+T[t−1])
+            # T[t] = β·(L[t]−L[t−1]) + (1−β)·T[t−1]
+            # Forecast h steps ahead = L[n] + h·T[n]
+            _hist_vals = _fc_act[_fc_y].tolist()
+            if len(_hist_vals) >= 2:
+                _alpha, _beta = 0.4, 0.2
+                _L = _hist_vals[0]
+                _T = _hist_vals[1] - _hist_vals[0]
+                for _v in _hist_vals[1:]:
+                    _L_prev, _T_prev = _L, _T
+                    _L = _alpha * _v + (1 - _alpha) * (_L_prev + _T_prev)
+                    _T = _beta  * (_L - _L_prev) + (1 - _beta) * _T_prev
+                _fc_values = [max(0.0, _L + (i + 1) * _T)
+                              for i in range(len(_fc_labels))]
+            else:
+                _fc_values = [_last_actual] * len(_fc_labels)
+
+        elif _fc_type == "Flat (last month)":
+            _fc_values = [_last_actual] * len(_fc_labels)
+
+        else:  # Goal-paced (300k)
+            _ytd_val = float(_fc_act[_fc_y].sum())
+            _mo_left = len(_fc_labels)
+            _goal_val = 300_000 if _fc_y == "pieces" else (_ytd_val / max(float(_fc_act["pieces"].sum()), 1) * 300_000)
+            _needed = max(_goal_val - _ytd_val, 0)
+            _mo_target = _needed / _mo_left if _mo_left > 0 else 0.0
+            _fc_values = [_mo_target] * len(_fc_labels)
+
+        # Apply scenario multiplier
+        _sc_mult = {"Base": 1.0, "Optimistic (+20%)": 1.20, "Conservative (−20%)": 0.80}
+        _mult = _sc_mult.get(_fc_scenario, 1.0)
+        _fc_values = [v * _mult for v in _fc_values]
 
         _fc_prefix = "€" if _fc_y == "revenue" else ""
         _fc_total  = _fc_act[_fc_y].sum() + sum(_fc_values)
@@ -1574,10 +1815,18 @@ with tab1:
             name="Actual", marker_color=BROWN, opacity=0.92,
             hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (actual)<extra></extra>",
         ))
+        _fc_legend_label = {
+            "Growth rate %":        f"Forecast ({'+' if _growth_pct >= 0 else ''}{_growth_pct}%/mo)",
+            "Linear trend":         "Forecast (linear trend)",
+            "Flat (last month)":    "Forecast (flat)",
+            "Goal-paced (300k)":    "Forecast (goal-paced)",
+            "Seasonal (prior year)": f"Forecast (seasonal ×{_yoy:.2f} YoY)" if _yoy else "Forecast (seasonal)",
+            "ETS (exp. smoothing)": "Forecast (ETS smoothing)",
+        }.get(_fc_type, "Forecast")
         if _fc_labels:
             fig_fc.add_trace(go.Bar(
                 x=_fc_labels, y=_fc_values,
-                name=f"Forecast ({'+' if _growth_pct >= 0 else ''}{_growth_pct}%/mo)",
+                name=_fc_legend_label,
                 marker_color=LAVEN, opacity=0.65,
                 hovertemplate=f"%{{x}}: %{{y:,.0f}} {_fc_lbl} (projected)<extra></extra>",
             ))
@@ -1635,131 +1884,286 @@ with tab1:
         )
         st.dataframe(_cat_summary, use_container_width=True, hide_index=True)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 · SECONDARY SALES
-# ══════════════════════════════════════════════════════════════════════════════
-with tab2:
-    st.markdown("<h2>Secondary Sales</h2>", unsafe_allow_html=True)
+    # ── divider between Level 1 and Level 2 ──────────────────────────────────
     st.markdown(
-        f"<p style='font-size:12px;color:{MID};margin-top:-6px;'>"
-        "Units sold through retail partners, reported by store.</p>",
+        f"<div style='margin:32px 0 24px;border-top:2px solid {BROWN}33;'></div>",
         unsafe_allow_html=True,
     )
 
-    if not so_f.empty and "retailer" in so_f.columns:
-        _so2 = so_f.copy()
-        _so2_units   = int(_so2["bottles_sold"].sum())
-        _so2_stores  = _so2["retailer"].nunique()
-        _so2_skus    = _so2["sku_name"].nunique()
-        _so2_top     = _so2.groupby("retailer")["bottles_sold"].sum().idxmax()
-        _so2_top_u   = int(_so2.groupby("retailer")["bottles_sold"].sum().max())
+    # ══════════════════════════════════════════════════════════════════════════
+    # LEVEL 2 — SELL-OUT: MARKET SHELF VELOCITY
+    # ══════════════════════════════════════════════════════════════════════════
+    # Section header — clearly Level 2
+    st.markdown(
+        f"<div style='background:rgba(168,217,154,0.15);border-left:4px solid {GREEN};"
+        f"border-radius:6px;padding:10px 16px;margin-bottom:10px;'>"
+        f"<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+        f"color:{MID};'>Level 2 — Sell-In to Retail</span>"
+        f"<h2 style='margin:2px 0 2px;font-size:20px;color:#1C1008;'>Market Shelf Velocity</h2>"
+        f"<p style='font-size:12px;color:{MID};margin:0;'>"
+        f"Sell-In to retail — either through a distributor or direct. "
+        f"Numbers reflect what physically moved into store shelves in the selected period.</p>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-        # YoY comparison for secondary sales
-        def _prior_year_so(so_full, period_name, jan1_ty, today_ts, custom_range_val):
-            if period_name == "This year (YTD)":
-                py_start = jan1_ty - pd.DateOffset(years=1)
-                py_end   = today_ts - pd.DateOffset(years=1)
-            elif period_name == "Last 3 months":
-                py_start = today_ts - pd.DateOffset(months=3) - pd.DateOffset(years=1)
-                py_end   = today_ts - pd.DateOffset(years=1)
-            elif period_name == "Last 6 months":
-                py_start = today_ts - pd.DateOffset(months=6) - pd.DateOffset(years=1)
-                py_end   = today_ts - pd.DateOffset(years=1)
-            elif period_name == "Custom range" and custom_range_val and len(custom_range_val) == 2:
-                py_start = pd.Timestamp(custom_range_val[0]) - pd.DateOffset(years=1)
-                py_end   = pd.Timestamp(custom_range_val[1]) - pd.DateOffset(years=1)
-            else:
-                return pd.DataFrame()
-            if so_full.empty:
-                return pd.DataFrame()
-            return so_full[(so_full["week"] >= py_start) & (so_full["week"] <= py_end)]
+    def _country_gap_data(market_code):
+        """Return (gap_df, cum_si, cum_so, cover_days) for a market (or all markets).
+        Uses period-filtered so_f / prim_f so charts match the selected period."""
+        _so_src = so_f if market_code == "All" else (
+            so_f[so_f["market"] == market_code] if not so_f.empty else so_f)
+        _pi_src = prim_f if market_code == "All" else (
+            prim_f[prim_f["market"] == market_code] if not prim_f.empty else prim_f)
 
-        _py_so = _prior_year_so(so_df, period, jan1_this_year, today,
-                                 custom_range if period == "Custom range" else None)
-        _py_so_units  = int(_py_so["bottles_sold"].sum()) if not _py_so.empty else 0
-        _py_so_stores = _py_so["retailer"].nunique() if not _py_so.empty else 0
-        _py_so_skus   = _py_so["sku_name"].nunique() if not _py_so.empty else 0
+        _pf_mo = pd.DataFrame()
+        if not _pi_src.empty and "week" in _pi_src.columns:
+            _pf_mo = (_pi_src.assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str))
+                      .groupby("_mkey")["bottles"].sum().reset_index())
+            _pf_mo["month"] = _pf_mo["_mkey"].apply(lambda m: pd.Period(m).strftime("%b %Y"))
 
-        so2_k1, so2_k2, so2_k3, so2_k4 = st.columns(4)
-        so2_k1.metric("Units Sold", f"{_so2_units:,}",
-                      delta=_delta_str(_so2_units, _py_so_units) if _py_so_units else None,
-                      help=f"Prior year same period: {_py_so_units:,} units" if _py_so_units else None)
-        so2_k2.metric("Stores Reporting", f"{_so2_stores}",
-                      delta=_delta_str(_so2_stores, _py_so_stores) if _py_so_stores else None)
-        so2_k3.metric("SKUs Tracked", f"{_so2_skus}",
-                      delta=_delta_str(_so2_skus, _py_so_skus) if _py_so_skus else None)
-        so2_k4.metric("Top Store", _so2_top,
-                      delta=f"{_so2_top_u:,} units",
-                      help="Store with highest sell-out volume")
+        _so_mo = pd.DataFrame()
+        if not _so_src.empty and "week" in _so_src.columns:
+            _so_mo = (_so_src.assign(_mkey=lambda d: d["week"].dt.to_period("M").astype(str))
+                      .groupby("_mkey")["bottles_sold"].sum().reset_index())
+            _so_mo["month"] = _so_mo["_mkey"].apply(lambda m: pd.Period(m).strftime("%b %Y"))
 
-        st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+        _si_ready = _pf_mo if not _pf_mo.empty else pd.DataFrame(columns=["_mkey", "bottles", "month"])
+        _so_ready = _so_mo if not _so_mo.empty else pd.DataFrame(columns=["_mkey", "bottles_sold", "month"])
+        gap = (_si_ready.rename(columns={"bottles": "sell_in"})
+               .merge(_so_ready.rename(columns={"bottles_sold": "sell_out"}), on="_mkey", how="outer")
+               .sort_values("_mkey").fillna(0))
+        gap["month"] = gap.apply(
+            lambda r: r.get("month_x") or r.get("month_y") or
+            pd.Period(r["_mkey"]).strftime("%b %Y"), axis=1)
 
-        col_so2a, col_so2b = st.columns([0.60, 0.40])
+        cum_si = gap["sell_in"].sum()
+        cum_so = gap["sell_out"].sum()
+        implied = cum_si - cum_so
 
-        with col_so2a:
-            _store_rank2 = (
-                _so2.groupby("retailer")["bottles_sold"].sum()
-                .reset_index().sort_values("bottles_sold", ascending=True).tail(20)
+        _last_3mo = today - pd.DateOffset(months=3)
+        _rec = _so_src[_so_src["week"] >= _last_3mo] if not _so_src.empty else _so_src
+        _rec_units = _rec["bottles_sold"].sum() if not _rec.empty else 0
+        _rec_days = max((_so_src["week"].max() - _last_3mo).days
+                        if not _so_src.empty and pd.notna(_so_src["week"].max()) else 90, 1)
+        _vel = _rec_units / _rec_days
+        cover = int(implied / _vel) if _vel > 0 and implied > 0 else 0
+
+        return gap, int(cum_si), int(cum_so), cover
+
+    if not so_f.empty:
+        _MARKET_ORDER_SO = ["SI", "HR", "DE", "PL", "CH", "ME", "AT"]
+        _so_mkts_available = so_df["market"].unique().tolist() if "market" in so_df.columns else ["SI"]
+        _so_markets_all = [m for m in _MARKET_ORDER_SO if m in _so_mkts_available] + \
+                          [m for m in _so_mkts_available if m not in _MARKET_ORDER_SO]
+        _country_flags  = {"SI": "🇸🇮", "HR": "🇭🇷", "ME": "🇲🇪", "DE": "🇩🇪", "PL": "🇵🇱", "CH": "🇨🇭", "AT": "🇦🇹"}
+
+        # ── JS scroll injection ───────────────────────────────────────────────
+        if st.session_state.get("_scroll_target"):
+            _anchor = st.session_state["_scroll_target"]
+            import streamlit.components.v1 as _stc
+            _stc.html(
+                f"""<script>
+                    var el = window.parent.document.getElementById('{_anchor}');
+                    if (el) el.scrollIntoView({{behavior:'smooth', block:'start'}});
+                </script>""",
+                height=0,
             )
-            _s2_colors = [BROWN if i % 2 == 0 else LAVEN for i in range(len(_store_rank2))]
-            fig_so2 = go.Figure(go.Bar(
-                x=_store_rank2["bottles_sold"], y=_store_rank2["retailer"],
-                orientation="h",
-                marker=dict(color=_s2_colors, line=dict(color=CREAM, width=0.5)),
-                text=[f"{int(v):,}" for v in _store_rank2["bottles_sold"]],
-                textposition="outside",
-                hovertemplate="<b>%{y}</b><br>%{x:,} units<extra></extra>",
-            ))
-            l_so2 = base_layout("Top 20 Stores", height=max(320, len(_store_rank2) * 24))
-            l_so2["xaxis"]["title"] = "Units Sold"
-            l_so2["margin"]["l"] = 220
-            l_so2["margin"]["r"] = 60
-            fig_so2.update_layout(**l_so2)
-            st.plotly_chart(fig_so2, use_container_width=True)
+            st.session_state["_scroll_target"] = None
 
-        with col_so2b:
-            _cat_so2 = (
-                _so2.groupby("sku_name")["bottles_sold"].sum()
-                .reset_index().sort_values("bottles_sold", ascending=False)
-            )
-            _cat_so2_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _cat_so2["sku_name"]]
-            fig_mix2 = go.Figure(go.Pie(
-                labels=_cat_so2["sku_name"], values=_cat_so2["bottles_sold"],
-                hole=0.50,
-                marker=dict(colors=_cat_so2_colors, line=dict(color=CREAM, width=2)),
-                textinfo="percent",
-                hovertemplate="<b>%{label}</b><br>%{value:,} units  (%{percent})<extra></extra>",
-            ))
-            l_mix2 = base_layout("Product Mix", height=320, legend_below=False)
-            l_mix2["legend"] = dict(orientation="v", x=1.02, y=0.5,
-                                    font=dict(size=9, color=BROWN), bgcolor="rgba(0,0,0,0)")
-            fig_mix2.update_layout(**l_mix2)
-            st.plotly_chart(fig_mix2, use_container_width=True)
-
-        # All-stores table
+        # ── ALL MARKETS overview ──────────────────────────────────────────────
         st.markdown(
-            f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:8px 0 6px;'>"
-            "All Stores — Units Sold Detail</p>",
+            '<div id="so-__all__"></div>',
             unsafe_allow_html=True,
         )
-        _store_tbl2 = (
-            _so2.groupby(["retailer","market"] if "market" in _so2.columns else ["retailer"])
-            .agg(units=("bottles_sold","sum"), skus=("sku_name","nunique"))
-            .reset_index().sort_values("units", ascending=False)
-            .rename(columns={"retailer":"Store","market":"Market","units":"Units Sold","skus":"SKUs"})
+        st.markdown(
+            f"<p style='font-size:12px;color:{MID};margin-bottom:8px;'>"
+            "Cross-country inventory health at a glance. Scroll down for the full breakdown per market.</p>",
+            unsafe_allow_html=True,
         )
-        _store_tbl2["Units Sold"] = _store_tbl2["Units Sold"].apply(lambda x: f"{int(x):,}")
-        st.dataframe(_store_tbl2, use_container_width=True, hide_index=True)
+
+        # Build comparison matrix
+        _matrix_rows = []
+        for _m in _so_markets_all:
+            _so_m   = so_f[so_f["market"] == _m] if "market" in so_f.columns else so_df
+            _pi_m   = prim_f[prim_f["market"] == _m] if not prim_f.empty and "market" in prim_f.columns else pd.DataFrame()
+            _stores = int(_so_m["retailer"].nunique()) if "retailer" in _so_m.columns else 0
+            _so_btl = int(_so_m["bottles_sold"].sum())
+            _si_btl = int(_pi_m["bottles"].sum()) if not _pi_m.empty else 0
+            _so_rev = _so_m["sellout_revenue"].sum() if "sellout_revenue" in _so_m.columns else 0
+            _matrix_rows.append({
+                "Country":         f"{_country_flags.get(_m, '')} {_m}",
+                "Sell-In (btl)":   f"{_so_btl:,}",
+                "Sell-In Rev (€)": f"€{_so_rev:,.0f}" if _so_rev > 0 else "—",
+            })
+        _mx_df = pd.DataFrame(_matrix_rows)
+        st.dataframe(_mx_df, use_container_width=True, hide_index=True)
+
+        # Summary bar: Sell-In (to retail) by country
+        if len(_so_markets_all) > 1:
+            _sum_so = [int(so_f[so_f["market"] == m]["bottles_sold"].sum())
+                       if "market" in so_f.columns else 0
+                       for m in _so_markets_all]
+            _sum_labels = [f"{_country_flags.get(m,'')} {m}" for m in _so_markets_all]
+            fig_sum = go.Figure()
+            fig_sum.add_trace(go.Bar(
+                x=_sum_labels, y=_sum_so, name="Sell-In (to retail)",
+                marker_color=GREEN, opacity=0.88,
+                hovertemplate="%{x}<br>Sell-In: %{y:,} btl<extra></extra>",
+            ))
+            l_sum = base_layout("Sell-In to Retail by Country (selected period)", height=280)
+            l_sum["barmode"] = "group"
+            fig_sum.update_layout(**l_sum)
+            st.plotly_chart(fig_sum, use_container_width=True, key="fig_sum_all")
+
+        # ── PER-COUNTRY sections (long scroll) ───────────────────────────────
+        for _mkt in _so_markets_all:
+            # Country section anchor + divider
+            st.markdown(
+                f'<div id="so-{_mkt}" style="padding-top:4px;"></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<div style='margin:28px 0 14px;border-top:1px solid {BROWN}28;'></div>"
+                f"<h3 style='font-size:16px;font-weight:700;color:#1C1008;margin:0 0 12px;'>"
+                f"{_country_flags.get(_mkt, '')} {_mkt}</h3>",
+                unsafe_allow_html=True,
+            )
+
+            _so2 = so_f[so_f["market"] == _mkt].copy() if "market" in so_f.columns else so_f.copy()
+            _pf2 = prim_f[prim_f["market"] == _mkt].copy() if not prim_f.empty and "market" in prim_f.columns else prim_f.copy()
+
+            _gap_c, _cum_si_c, _cum_so_c, _cover_c = _country_gap_data(_mkt)
+            _so2_units  = int(_so2["bottles_sold"].sum())
+            _so2_stores = int(_so2["retailer"].nunique()) if "retailer" in _so2.columns else 0
+            _so2_rev    = _so2["sellout_revenue"].sum() if "sellout_revenue" in _so2.columns else 0.0
+            _si_units   = int(_pf2["bottles"].sum()) if not _pf2.empty else 0
+
+            # ── KPIs ─────────────────────────────────────────────────────────
+            # Prior-year secondary sales for this market → YoY deltas
+            _so_full_mkt = (so_df[so_df["market"] == _mkt].copy()
+                            if not so_df.empty and "market" in so_df.columns else pd.DataFrame())
+            _so_py = _prior_year_prim(
+                _so_full_mkt, period, jan1_this_year, today,
+                custom_range if period == "Custom range" else None)
+            _py_so_units = (int(_so_py["bottles_sold"].sum())
+                            if not _so_py.empty and "bottles_sold" in _so_py.columns else 0)
+            _py_so_rev   = (_so_py["sellout_revenue"].sum()
+                            if not _so_py.empty and "sellout_revenue" in _so_py.columns else 0.0)
+            _so2_delta_u = _delta_str(_so2_units, _py_so_units) if _py_so_units > 0 else None
+            _so2_delta_r = _delta_str(_so2_rev, _py_so_rev, is_currency=True) if _py_so_rev > 0 else None
+            _avg_btl_price = round(_so2_rev / _so2_units, 2) if _so2_units > 0 and _so2_rev > 0 else 0.0
+            _n_skus = _so2["sku_id"].nunique() if "sku_id" in _so2.columns and not _so2.empty else 0
+
+            ck1, ck2, ck3, ck4 = st.columns(4)
+            ck1.markdown(_kpi_card("Sell-In (to retail)", f"{_so2_units:,} btl",
+                                   _so2_delta_u, color=GREEN),
+                         unsafe_allow_html=True)
+            if _so2_rev > 0:
+                ck2.markdown(_kpi_card("Sell-In Revenue", f"€{_so2_rev:,.0f}",
+                                       _so2_delta_r, color=CORAL),
+                             unsafe_allow_html=True)
+            if _avg_btl_price > 0:
+                ck3.markdown(_kpi_card("Avg Price / Bottle", f"€{_avg_btl_price:.2f}",
+                                       color=YELLOW),
+                             unsafe_allow_html=True)
+            if _n_skus > 0:
+                ck4.markdown(_kpi_card("Active SKUs", str(_n_skus), color=LAVEN),
+                             unsafe_allow_html=True)
+
+            st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+
+            # ── Sell-In monthly trend ─────────────────────────────────────────
+            _gap_plot = _gap_c[_gap_c["sell_out"] > 0] if not _gap_c.empty else _gap_c
+            if not _gap_plot.empty:
+                fig_gap = go.Figure()
+                fig_gap.add_trace(go.Bar(
+                    x=_gap_plot["month"], y=_gap_plot["sell_out"],
+                    name="Sell-In (to retail)",
+                    marker_color=GREEN, opacity=0.92,
+                    hovertemplate="%{x}<br>%{y:,} btl<extra></extra>",
+                ))
+                l_gap = base_layout(
+                    f"Monthly Sell-In — {_country_flags.get(_mkt,'')} {_mkt}",
+                    height=280)
+                l_gap["xaxis"]["tickangle"] = -35
+                fig_gap.update_layout(**l_gap)
+                st.plotly_chart(fig_gap, use_container_width=True, key=f"fig_gap_{_mkt}")
+
+            st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+
+            # ── Top Retailers ─────────────────────────────────────────────────
+            if not _so2.empty and "retailer" in _so2.columns and _so2["retailer"].notna().any():
+                col_ret, col_mix = st.columns([0.60, 0.40])
+
+                with col_ret:
+                    _top_ret = (_so2.groupby("retailer")["bottles_sold"].sum()
+                                .reset_index().sort_values("bottles_sold", ascending=True).tail(15))
+                    _ret_colors = [BROWN if i % 2 == 0 else LAVEN for i in range(len(_top_ret))]
+                    fig_ret = go.Figure(go.Bar(
+                        x=_top_ret["bottles_sold"], y=_top_ret["retailer"],
+                        orientation="h",
+                        marker=dict(color=_ret_colors, line=dict(color=CREAM, width=0.5)),
+                        text=[f"{int(v):,}" for v in _top_ret["bottles_sold"]],
+                        textposition="outside",
+                        hovertemplate="<b>%{y}</b><br>%{x:,} btl<extra></extra>",
+                    ))
+                    l_ret = base_layout(f"Top Retailer Accounts — {_country_flags.get(_mkt,'')} {_mkt}",
+                                        height=max(300, len(_top_ret) * 26))
+                    l_ret["xaxis"]["title"] = "Bottles Sold"
+                    l_ret["margin"]["l"] = 230
+                    l_ret["margin"]["r"] = 70
+                    fig_ret.update_layout(**l_ret)
+                    st.plotly_chart(fig_ret, use_container_width=True, key=f"fig_ret_{_mkt}")
+
+                with col_mix:
+                    _cat_mix = (_so2.groupby("sku_name")["bottles_sold"].sum()
+                                .reset_index().sort_values("bottles_sold", ascending=False))
+                    if not _cat_mix.empty:
+                        _mix_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN)
+                                       for n in _cat_mix["sku_name"]]
+                        fig_mix = go.Figure(go.Pie(
+                            labels=_cat_mix["sku_name"], values=_cat_mix["bottles_sold"],
+                            hole=0.50,
+                            marker=dict(colors=_mix_colors, line=dict(color=CREAM, width=2)),
+                            textinfo="percent",
+                            hovertemplate="<b>%{label}</b><br>%{value:,} btl  (%{percent})<extra></extra>",
+                        ))
+                        l_mix = base_layout("Product Mix", height=300, legend_below=False)
+                        l_mix["legend"] = dict(orientation="v", x=1.02, y=0.5,
+                                               font=dict(size=9, color=BROWN), bgcolor="rgba(0,0,0,0)")
+                        fig_mix.update_layout(**l_mix)
+                        st.plotly_chart(fig_mix, use_container_width=True, key=f"fig_mix_{_mkt}")
+
+                # Retailer detail table
+                st.markdown(
+                    f"<p style='font-size:12px;font-weight:600;color:{BROWN};margin:8px 0 4px;'>"
+                    f"All Stores — {_country_flags.get(_mkt,'')} {_mkt}</p>",
+                    unsafe_allow_html=True,
+                )
+                _agg_kw = {"units": ("bottles_sold", "sum"), "skus": ("sku_name", "nunique")}
+                if "sellout_revenue" in _so2.columns and _so2["sellout_revenue"].sum() > 0:
+                    _rtbl = (_so2.groupby("retailer").agg(**_agg_kw, revenue=("sellout_revenue", "sum"))
+                             .reset_index().sort_values("units", ascending=False))
+                    _rtbl.columns = ["Store", "Units Sold", "SKUs", "Revenue (€)"]
+                    _rtbl["Revenue (€)"] = _rtbl["Revenue (€)"].apply(lambda x: f"€{x:,.0f}")
+                else:
+                    _rtbl = (_so2.groupby("retailer").agg(**_agg_kw)
+                             .reset_index().sort_values("units", ascending=False))
+                    _rtbl.columns = ["Store", "Units Sold", "SKUs"]
+                _rtbl["Units Sold"] = _rtbl["Units Sold"].apply(lambda x: f"{int(x):,}")
+                st.dataframe(_rtbl, use_container_width=True, hide_index=True)
+
+            elif _so2.empty:
+                st.info(f"No sell-out data for {_mkt} in the selected period.")
 
     else:
         st.info("No secondary sales data available. Upload a file with a Secondary Sales sheet.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 · MARKETING
+# TAB 2 · MARKETING
 # ══════════════════════════════════════════════════════════════════════════════
-with tab3:
+with tab2:
     ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
 
     # ── KPI row ───────────────────────────────────────────────────────────────
@@ -1793,9 +2197,9 @@ with tab3:
             st.markdown(
                 f"<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;"
                 f"border-radius:6px;margin-bottom:14px;font-size:13px;color:#3a2e24;line-height:1.9;'>"
-                f"📊 <b>Top channel:</b> {_top_ch} — {_top_ch_pct:.0f}% of total spend &nbsp;·&nbsp; "
-                f"🌍 <b>Top market:</b> {_top_mkt} — {_top_mkt_pct:.0f}% of budget &nbsp;·&nbsp; "
-                f"📅 <b>Avg monthly spend:</b> €{_avg_mo:,.0f} across {_n_months} active months"
+                f"<b>Top channel:</b> {_top_ch} — {_top_ch_pct:.0f}% of total spend &nbsp;·&nbsp; "
+                f"<b>Top market:</b> {_top_mkt} — {_top_mkt_pct:.0f}% of budget &nbsp;·&nbsp; "
+                f"<b>Avg monthly spend:</b> €{_avg_mo:,.0f} across {_n_months} active months"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -1955,9 +2359,9 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 · PROFITABILITY
+# TAB 3 · PROFITABILITY
 # ══════════════════════════════════════════════════════════════════════════════
-with tab4:
+with tab3:
     st.markdown("<h2>Profitability — From Revenue to Gross Margin</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px; color:{MID};'>"
@@ -1980,11 +2384,11 @@ with tab4:
         st.markdown(
             f"""<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;
             border-radius:6px;margin-bottom:12px;font-size:13px;color:#3a2e24;line-height:1.9;'>
-            📅 <b>Revenue:</b> 2026 primary invoices only &nbsp;·&nbsp;
-            💰 <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
-            📦 <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
-            🔩 <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
-            📐 <b>Formula:</b> Gross Revenue − Material Cost − Labour &amp; Overhead + Active Stock + Internal Consumption − Promo &amp; External − Logistics − Mktg &amp; Promo = Gross Margin
+            <b>Revenue:</b> 2026 primary invoices only &nbsp;·&nbsp;
+            <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
+            <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
+            <b>Full-year prod. cost/pc:</b> €{_cost_per_pc:.2f}<br>
+            <b>Formula:</b> Gross Revenue − Material Cost − Labour &amp; Overhead + Active Stock + Internal Usage − Logistics − Mktg &amp; Promo − Promotional Units = Gross Margin
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1992,10 +2396,6 @@ with tab4:
     _avail_mkt = sorted(prim_f["market"].unique().tolist()) if not prim_f.empty else []
     _wf_opts = ["All markets"] + _avail_mkt
     wf_mkt = st.radio("Market:", options=_wf_opts, horizontal=True, key="wf_mkt")
-
-    stock_val    = xl_stock_val
-    promo_val    = xl_promo_val
-    internal_val = xl_internal_val
 
     # Profitability uses 2026 revenue only (expenses are 2026-only; mixing years distorts margins)
     _prim_2026 = prim_f[prim_f["week"].dt.year == 2026] if not prim_f.empty else prim_f
@@ -2009,9 +2409,6 @@ with tab4:
     mkt_spend  = m_data["total_spend"].sum() if not m_data.empty else 0
 
     # ── Filter expenses by product category ──────────────────────────────────
-    # Category → keyword in product_line column (expenses sheet)
-    # Keywords must match the product_line column values in the Expenses sheet:
-    #   "Niamito Fresh Meal", "Niamito Oatmeal", "Niamito UHT Meal"
     _CAT_PL_KW = {
         "Niamito Fresh Meal":         ["fresh meal", "fresh"],
         "Niamito Oatmeal":            ["oatmeal", "oat"],
@@ -2021,46 +2418,67 @@ with tab4:
         _kws = [kw for cat in category_filter for kw in _CAT_PL_KW.get(cat, [])]
         _pl_mask = exp_df["product_line"].str.lower().str.contains("|".join(_kws), na=False)
         exp_df_pf = exp_df[_pl_mask]
-        # Scale the per-period allocation values by this category's revenue share
-        _full_2026_gross = (_prim_2026["gross_revenue"].sum()
-                            if not _prim_2026.empty else 1)
-        _cat_share = gross / max(_full_2026_gross, 1)
-        stock_val    = xl_stock_val    * _cat_share
-        promo_val    = xl_promo_val    * _cat_share
-        internal_val = xl_internal_val * _cat_share
     else:
         exp_df_pf = exp_df
 
-    # Pull expense totals
-    mat_cost   = exp_df_pf["material_cost"].sum()    if not exp_df_pf.empty and "material_cost"   in exp_df_pf.columns else 0
-    lab_cost   = exp_df_pf["labour_overhead"].sum()  if not exp_df_pf.empty and "labour_overhead" in exp_df_pf.columns else 0
-    prod_cost  = exp_df_pf["production_cost"].sum()  if not exp_df_pf.empty else 0
-    # If dedicated columns are absent or both zero, use production_cost and split it
+    def _exp_sum(col):
+        return exp_df_pf[col].sum() if not exp_df_pf.empty and col in exp_df_pf.columns else 0.0
+
+    # Pull expense totals from per-row columns
+    mat_cost     = _exp_sum("material_cost")
+    lab_cost     = _exp_sum("labour_overhead")
+    prod_cost    = _exp_sum("production_cost")
+    logistics    = _exp_sum("logistics")
+    mktg_promo   = _exp_sum("marketing_promo")
+    promo_units  = _exp_sum("promo_units")    # outflow — separate bar next to Mktg
+    internal_val = _exp_sum("internal_usage") # always positive — sold at production cost
+
+    # Active Stock is a running balance (ending inventory value) per SKU, not a monthly flow.
+    # Take the last value from months where production actually happened (production_cost > 0)
+    # to avoid formula-error months in the Excel.
+    if not exp_df_pf.empty and "active_stock" in exp_df_pf.columns and "production_cost" in exp_df_pf.columns:
+        _prod_rows = exp_df_pf[exp_df_pf["production_cost"] > 0]
+        if not _prod_rows.empty and "sku" in _prod_rows.columns:
+            _mon_order = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+            _prod_rows = _prod_rows.copy()
+            _prod_rows["_mon_idx"] = _prod_rows["month"].map(
+                lambda m: _mon_order.index(m) if m in _mon_order else 99)
+            _last_stock = (_prod_rows.sort_values("_mon_idx")
+                           .groupby(["product_line","sku"])["active_stock"].last())
+            active_stock = float(_last_stock.sum())
+        else:
+            active_stock = 0.0
+    else:
+        active_stock = 0.0
+
+    # Fallback: if dedicated columns absent, split production_cost 50/50
     if mat_cost == 0 and lab_cost == 0 and prod_cost > 0:
         mat_cost = prod_cost * 0.5
         lab_cost = prod_cost - mat_cost
-    logistics  = exp_df_pf["logistics"].sum()        if not exp_df_pf.empty else 0
-    mktg_promo = exp_df_pf["marketing_promo"].sum()  if not exp_df_pf.empty else 0
 
-    # ── P&L logic ─────────────────────────────────────────────────────────────
-    # Material Cost + Labour & Overhead = full production cost
-    # Active Stock      → asset created, adds back to margin (green bar)
-    # Internal Consumption → value retained internally, adds back to margin (green bar)
-    # Promo & External  → outflow, reduces margin (red bar)
-    total_exp    = (mat_cost + lab_cost) + logistics + mktg_promo + promo_val - stock_val - internal_val
-    gross_margin = gross - mat_cost - lab_cost + stock_val + internal_val - promo_val - logistics - mktg_promo
+    # ── P&L ───────────────────────────────────────────────────────────────────
+    # active_stock: production cost that becomes inventory → adds back to margin
+    # internal_val: sold to ourselves at production cost → adds back to margin
+    # promo_units / mktg_promo / logistics: outflows → reduce margin
+    gross_margin = (gross
+                    - mat_cost - lab_cost
+                    + active_stock + internal_val
+                    - logistics - mktg_promo - promo_units)
+    total_exp    = (mat_cost + lab_cost
+                    + logistics + mktg_promo + promo_units
+                    - active_stock - internal_val)
 
     # ── Waterfall ─────────────────────────────────────────────────────────────
     if prod_cost > 0 or logistics > 0 or mktg_promo > 0:
-        wf_labels  = ["Gross Revenue", "🌾 Material Cost", "⚙️ Labour & Overhead",
-                      "Active Stock", "Internal Consumption", "Promo & External",
-                      "Logistics", "Mktg & Promo"]
+        wf_labels  = ["Gross Revenue", "Material Cost", "Labour & Overhead",
+                      "Active Stock", "Internal Usage",
+                      "Logistics", "Mktg & Promo", "Promotional Units"]
         wf_measure = ["absolute",      "relative",          "relative",
-                      "relative",      "relative",           "relative",
-                      "relative",      "relative"]
+                      "relative",      "relative",
+                      "relative",      "relative",          "relative"]
         wf_values  = [gross,           -mat_cost,           -lab_cost,
-                      +stock_val,      +internal_val,        -promo_val,
-                      -logistics,      -mktg_promo]
+                      +active_stock,   +internal_val,
+                      -logistics,      -mktg_promo,         -promo_units]
         wf_labels.append("Gross Margin")
         wf_measure.append("total")
         wf_values.append(gross_margin)
@@ -2119,16 +2537,16 @@ with tab4:
         _pf4_k1.metric("Gross Revenue", f"€{_pf_summ_gross:,.0f}")
         _pf4_k2.metric("Net Cost Charge",
                         f"€{total_exp:,.0f}",
-                        help="Material Cost + Labour & Overhead − Active Stock − Internal Consumption + Promo & External + Logistics + Mktg & Promo")
+                        help="Material Cost + Labour & Overhead − Active Stock − Internal Usage + Logistics + Mktg & Promo + Promotional Units")
         _pf4_k3.metric("Gross Margin",  f"€{gross_margin:,.0f}")
         _pf4_k4.metric("Margin %",      f"{gross_margin/max(gross,1)*100:.1f}%")
         st.markdown("")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 · SKU PERFORMANCE
+# TAB 4 · SKU PERFORMANCE
 # ══════════════════════════════════════════════════════════════════════════════
-with tab5:
+with tab4:
 
     st.markdown("<h2>SKU Performance</h2>", unsafe_allow_html=True)
 
