@@ -2072,20 +2072,51 @@ with tab1:
 
             st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
 
-            # ── Sell-In monthly trend ─────────────────────────────────────────
-            _gap_plot = _gap_c[_gap_c["sell_out"] > 0] if not _gap_c.empty else _gap_c
-            if not _gap_plot.empty:
-                fig_gap = go.Figure()
-                fig_gap.add_trace(go.Bar(
-                    x=_gap_plot["month"], y=_gap_plot["sell_out"],
-                    name="Sell-In (to retail)",
-                    marker_color=GREEN, opacity=0.92,
-                    hovertemplate="%{x}<br>%{y:,} btl<extra></extra>",
-                ))
+            # ── Sell-In monthly trend (stacked by product category) ──────────
+            _so2_chart = _so2.copy() if not _so2.empty else pd.DataFrame()
+            if not _so2_chart.empty and "week" in _so2_chart.columns and "bottles_sold" in _so2_chart.columns:
+                _so2_chart["_mkey"] = _so2_chart["week"].dt.to_period("M").astype(str)
+                _so2_chart["_month_lbl"] = _so2_chart["_mkey"].apply(
+                    lambda m: pd.Period(m).strftime("%b %Y"))
+                _cat_col = "category" if "category" in _so2_chart.columns else None
+                _CAT_COLORS = {
+                    "Niamito Fresh Meal":       GREEN,
+                    "Niamito Oatmeal":          BROWN,
+                    "Niamito Meal in a Bottle": LAVEN,
+                }
+                if _cat_col:
+                    _si_pivot = (_so2_chart
+                                 .groupby(["_mkey", "_month_lbl", _cat_col])["bottles_sold"]
+                                 .sum().reset_index()
+                                 .pivot(index=["_mkey","_month_lbl"], columns=_cat_col,
+                                        values="bottles_sold")
+                                 .fillna(0).reset_index()
+                                 .sort_values("_mkey"))
+                    _cats_present = [c for c in ALL_CATEGORIES if c in _si_pivot.columns]
+                    fig_gap = go.Figure()
+                    for _ci, _cat in enumerate(_cats_present):
+                        fig_gap.add_trace(go.Bar(
+                            x=_si_pivot["_month_lbl"],
+                            y=_si_pivot[_cat],
+                            name=_cat.replace("Niamito ", ""),
+                            marker_color=_CAT_COLORS.get(_cat, CORAL),
+                            opacity=0.92,
+                            hovertemplate=f"<b>{_cat.replace('Niamito ','')}</b><br>"
+                                          "%{x}<br>%{y:,} btl<extra></extra>",
+                        ))
+                else:
+                    _si_mo = (_so2_chart.groupby(["_mkey","_month_lbl"])["bottles_sold"]
+                              .sum().reset_index().sort_values("_mkey"))
+                    fig_gap = go.Figure(go.Bar(
+                        x=_si_mo["_month_lbl"], y=_si_mo["bottles_sold"],
+                        name="Sell-In", marker_color=GREEN, opacity=0.92,
+                        hovertemplate="%{x}<br>%{y:,} btl<extra></extra>",
+                    ))
                 l_gap = base_layout(
                     f"Monthly Sell-In — {_country_flags.get(_mkt,'')} {_mkt}",
                     height=280)
                 l_gap["xaxis"]["tickangle"] = -35
+                l_gap["barmode"] = "stack"
                 fig_gap.update_layout(**l_gap)
                 st.plotly_chart(fig_gap, use_container_width=True, key=f"fig_gap_{_mkt}")
 
