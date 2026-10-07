@@ -775,7 +775,7 @@ def load_excel(file):
                 _mo_raw, _sku_raw, _nm_raw, _units_raw, _rev_raw, _prod_line, _yr_raw = \
                     (_sfrow[i] if i < len(_sfrow) else None for i in range(7))
                 # Skip rows without SKU or units
-                if not _sku_raw or not _units_raw:
+                if not _sku_raw or (not _units_raw and not _rev_raw):
                     continue
                 _mo_str = str(_mo_raw).strip() if _mo_raw else ""
                 _mo_num = _month_to_num.get(_mo_str)
@@ -1026,7 +1026,7 @@ def load_excel(file):
             if pd.isna(r.get(pcs_col_s)):
                 continue
             row_data = _parse_secondary_row(r, date_col_s, retail_col_s, sku_col_s, pcs_col_s, rev_col_s, mkt_col_s)
-            if row_data["bottles_sold"] > 0:
+            if row_data["bottles_sold"] != 0 or row_data["sellout_revenue"] != 0:
                 so_rows.append(row_data)
 
     # Sell-out Template — merge additional rows
