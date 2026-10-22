@@ -2,6 +2,7 @@
 import unittest
 from pathlib import Path
 import sys
+import json
 from datetime import date
 import pandas as pd
 
@@ -115,6 +116,16 @@ class InteractiveRegression(unittest.TestCase):
     def test_original_hosting_entrypoint(self):
         at=AppTest.from_file(str(ROOT/'appreal.py'),default_timeout=60).run()
         self.assertEqual([x.message for x in at.exception],[])
+        self.assertEqual(at.radio(key='metric_mode').value,'Pieces sold')
+        labels=[tab.label for tab in at.tabs]
+        for page in ('Overview','Sales','Marketing','Profitability','Products','Data & exports'):
+            self.assertIn(page,labels)
+        titles=[json.loads(node.proto.spec).get('layout',{}).get('title',{}).get('text','')
+                for node in at.get('plotly_chart')]
+        for title in ('Units sold over time','Primary units by product family',
+                      'Gross Revenue by SKU','Secondary units sold vs marketing spend'):
+            self.assertIn(title,titles)
+        self.assertGreaterEqual(len(at.dataframe),24)
 
     def test_perspectives_and_product_shelf(self):
         at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=60).run()
@@ -128,7 +139,10 @@ class InteractiveRegression(unittest.TestCase):
         self.assertEqual([x.message for x in at.exception],[])
         markup=''.join(x.value for x in at.markdown)
         self.assertIn('data:image/webp;base64,',markup)
-        self.assertIn('REAL FOOD.',markup)
+        self.assertIn('Sales intelligence',markup)
+        self.assertIn('Primary units sold',markup)
+        at.radio(key='product_shelf_family').set_value('Kaša').run()
+        self.assertEqual([x.message for x in at.exception],[])
 
 
 if __name__ == '__main__':

@@ -15,9 +15,9 @@ The app loads `Niamito_Master_Tables.xlsx` from the repository. An uploaded work
 
 ## Views
 
-- **Overview:** primary and secondary revenue, a photographed product-family shelf, product mix, market results and source coverage. Five switchable perspectives explore product families, flavours, markets, retailers and marketing mix. Primary and secondary figures are never added together.
+- **Overview:** primary and consumer units lead the KPIs and trends, followed by the retained revenue charts, a photographed product-family shelf, market results and source coverage. Five switchable perspectives explore product families, flavours, markets, retailers and marketing mix. Primary and secondary figures are never added together.
 - **Sales:** the existing primary/secondary breakdowns, market navigation, volume/revenue switch, year-over-year comparisons, annual goal and all six forecast methods with scenarios.
-- **Marketing:** recorded product allocations, monthly reconciliation, calendar spend trends, cumulative spend, ATL/BTL and supporting costs, product/retailer matrix, sales context, influencer records, search, exports and source-quality actions.
+- **Marketing:** all charts and tables stay together in one scrolling view: recorded product allocations, monthly reconciliation, calendar trends, original monthly/cumulative spend, annotated channel spend/counts, ATL/BTL and supporting costs, product/retailer matrix, units-versus-spend and revenue context, influencer records, both source and expanded expense registers, search, exports and source-quality actions.
 - **Profitability:** the existing 2026 annual expense model and waterfall, with its annual cost and market-allocation limitations stated explicitly.
 - **Products:** a UHT/HPP product shelf with real Niamito product photography and period-filtered performance, plus the existing SKU comparisons, trends, ranking and market views. Historical products remain in detailed tables.
 - **Data & exports:** typed records, CSV downloads and reporting definitions.
@@ -49,7 +49,9 @@ The workbook itself is unchanged by the redesign. Accounting allocation rules an
 
 The dashboard uses Niamito's chocolate/cream/pastel identity, official logo, Right Grotesk web fonts and product photography from the brand's own website. Assets are bundled under `assets/brand` so rendering does not depend on image requests to a third party. `assets/brand/sources.json` records each original URL. The brand owner requested this reuse for its dashboard; any redistribution of these assets must respect the brand's existing rights and font licence.
 
-Kaša keeps a typographic family tile because no verified oatmeal photograph is included. Product images identify families/flavours; they do not imply current stock or availability. Product cards calculate primary revenue/units and secondary revenue independently from the selected records.
+The oatmeal photograph comes from the supplied Origin record for Blueberry Oat Meal (BLK05-1014). It identifies the Kaša family and Blueberry flavour; Choco and Peach retain typographic placeholders until their own verified photos are supplied. Product images do not imply current stock or availability. Product cards lead with primary units and calculate primary/secondary units and revenue independently from the selected records.
+
+The presentation uses a compact editorial header, restrained Niamito colours and smaller straight product photos. The existing sales, forecast, profitability and product graphs and tables remain accessible in their original main sections. Revenue analyses remain available alongside the units-first emphasis. Marketing sections are sequential rather than hidden in nested tabs.
 
 ## Source structure
 

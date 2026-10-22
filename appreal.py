@@ -1182,6 +1182,19 @@ with tab4:
             net=("net_revenue","sum"),
         ).reset_index().sort_values("gross", ascending=False)
 
+        # Units lead the product comparison; the original revenue view stays below.
+        _sku_units = sku_prim.sort_values("bottles", ascending=True)
+        fig_units = go.Figure(go.Bar(
+            x=_sku_units["bottles"], y=_sku_units["sku_name"], orientation="h",
+            marker_color=[CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _sku_units["sku_name"]],
+            text=[f"{v:,.0f}" for v in _sku_units["bottles"]], textposition="outside",
+            hovertemplate="<b>%{y}</b><br>%{x:,.0f} units sold<extra></extra>",
+        ))
+        _units_layout = base_layout("Primary units sold by SKU", height=max(300,len(sku_prim)*36))
+        _units_layout["margin"].update(l=220,r=80)
+        fig_units.update_layout(**_units_layout)
+        st.plotly_chart(fig_units,width="stretch",theme=None,config={"displaylogo":False})
+
         # ── Gross Revenue by SKU — horizontal ranked bar ───────────────────────
         _sku_rev_sorted = sku_prim.sort_values("gross", ascending=True)
         _sku_rev_colors = [CATEGORY_COLORS.get(get_product_category(n), BROWN)

@@ -5,12 +5,12 @@ import base64
 import streamlit as st
 import plotly.graph_objects as go
 
-INK = '#3F2111'
-MUTED = '#725B4B'
-PURPLE = '#6B83C1'
-GREEN = '#47814A'
-CORAL = '#D9665A'
-PALETTE = [PURPLE, GREEN, CORAL, '#CB9D37', '#8D6C9D', '#AA7C5C', '#9AB38B']
+INK = '#34251E'
+MUTED = '#81766D'
+PURPLE = '#7F91AC'
+GREEN = '#667B66'
+CORAL = '#C58E7A'
+PALETTE = [PURPLE, GREEN, CORAL, '#B09A67', '#A18B9A', '#9A8776', '#AAB39B']
 
 
 def install_theme():
@@ -28,15 +28,15 @@ def install_theme():
 
 def base_layout(title='', height=340, legend_below=True):
     return dict(
-        title=dict(text=title, font=dict(size=17, color=INK, family='Niamito Right Grotesk, Arial, sans-serif'), x=0),
+        title=dict(text=title, font=dict(size=15, color=INK, family='Niamito Right Grotesk, Arial, sans-serif'), x=0),
         height=height, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(family='Niamito Right Grotesk, Arial, sans-serif', size=12, color=MUTED),
-        colorway=PALETTE, margin=dict(l=12, r=20, t=54, b=45),
+        font=dict(family='-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif', size=12, color=MUTED),
+        colorway=PALETTE, margin=dict(l=16, r=22, t=55, b=45),
         legend=dict(orientation='h' if legend_below else 'v', y=-0.23 if legend_below else 1,
                     x=0, font=dict(size=11, color=INK), bgcolor='rgba(0,0,0,0)'),
-        xaxis=dict(showgrid=False, zeroline=False, linecolor='#DCCEB6', automargin=True),
-        yaxis=dict(gridcolor='#ECE5D7', zeroline=False, linecolor='#DCCEB6', automargin=True),
-        hoverlabel=dict(bgcolor='#F8F5F0', bordercolor='#DCCEB6', font=dict(color=INK, size=13)),
+        xaxis=dict(showgrid=False, zeroline=False, linecolor='#E5E0D9', automargin=True),
+        yaxis=dict(gridcolor='#EEEAE4', zeroline=False, linecolor='#E5E0D9', automargin=True),
+        hoverlabel=dict(bgcolor='#FFFEFA', bordercolor='#E5E0D9', font=dict(color=INK, size=13)),
         hovermode='x unified',
     )
 

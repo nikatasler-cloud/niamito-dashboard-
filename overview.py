@@ -13,17 +13,36 @@ def coverage(frame, date_col):
 
 
 def render_overview(primary, secondary, marketing, full_primary, full_secondary, full_marketing, allocations):
-    section('Business overview', 'The numbers. The bigger picture.',
+    section('Business overview', 'Sales performance',
             'Primary invoices measure our sales. Secondary sales measure sell-through. Each remains a separate view.')
     gross = primary.gross_revenue.sum()
     units = primary.bottles.sum()
     sellout = secondary.sellout_revenue.sum()
     spend = marketing.total_spend.sum()
-    kpis([('Invoiced revenue',f'€{gross:,.0f}',f'{units:,.0f} units sold'),
-          ('Consumer sell-out',f'€{sellout:,.0f}',f'{secondary.bottles_sold.sum():,.0f} units reported'),
-          ('Allocated marketing costs',f'€{allocations.total_spend.sum():,.0f}' if not allocations.empty else '—',f'Calendar detail: €{spend:,.0f}'),
-          ('Average invoiced price',f'€{gross/units:.2f}' if units > 0 else '—','Revenue / units in the selected scope')])
+    kpis([('Primary units sold',f'{units:,.0f}','Invoiced units, including returns'),
+          ('Consumer units sold',f'{secondary.bottles_sold.sum():,.0f}',f'€{sellout:,.0f} reported sell-out'),
+          ('Invoiced revenue',f'€{gross:,.0f}',f'€{gross/units:.2f} average / unit' if units > 0 else 'Average / unit unavailable'),
+          ('Allocated marketing costs',f'€{allocations.total_spend.sum():,.0f}' if not allocations.empty else '—',f'Calendar detail: €{spend:,.0f}')])
     render_product_gallery(primary, secondary)
+    c1,c2 = st.columns([1.7,1])
+    with c1:
+        fig = go.Figure()
+        for frame,col,name,color in ((primary,'bottles','Primary units',PURPLE),(secondary,'bottles_sold','Consumer sell-out units',GREEN)):
+            if frame.empty: continue
+            monthly = frame.groupby(frame.week.dt.to_period('M'))[col].sum()
+            fig.add_trace(go.Scatter(x=monthly.index.to_timestamp(),y=monthly.values,name=name,mode='lines+markers',
+                line=dict(color=color,width=2.5),marker=dict(size=5),connectgaps=False,
+                hovertemplate='%{x|%b %Y}<br>%{y:,.0f} units<extra></extra>'))
+        fig.update_layout(**base_layout('Units sold over time',350)); fig.update_yaxes(title_text='Units')
+        chart(fig,'overview_units')
+    with c2:
+        cat = primary.groupby('category').bottles.sum().sort_values(ascending=False)
+        names = {'Niamito Oatmeal':'Kaša','Niamito Fresh Meal':'HPP','Niamito Meal in a Bottle':'UHT'}
+        fig = go.Figure(go.Bar(x=cat.index.map(lambda x:names.get(x,x)),y=cat.values,
+            marker_color=PALETTE[:len(cat)],text=[f'{v:,.0f}' for v in cat],textposition='auto',
+            hovertemplate='%{x}<br>%{y:,.0f} units<extra></extra>'))
+        fig.update_layout(**base_layout('Primary units by product family',350)); fig.update_yaxes(title_text='Units')
+        chart(fig,'overview_product_units')
     c1,c2 = st.columns([1.7,1])
     with c1:
         fig = go.Figure()
@@ -46,7 +65,7 @@ def render_overview(primary, secondary, marketing, full_primary, full_secondary,
     c1,c2 = st.columns(2)
     with c1:
         section('Market performance','Where customers buy','Secondary sales are grouped by the market reported in the source.')
-        markets = secondary.groupby('market').agg(units=('bottles_sold','sum'),revenue=('sellout_revenue','sum')).reset_index().sort_values('revenue',ascending=False)
+        markets = secondary.groupby('market').agg(units=('bottles_sold','sum'),revenue=('sellout_revenue','sum')).reset_index().sort_values('units',ascending=False)
         if markets.empty: st.info('No sell-out records in this period.')
         else:
             st.dataframe(markets,hide_index=True,width='stretch',column_config={

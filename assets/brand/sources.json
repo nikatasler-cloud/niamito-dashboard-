@@ -1,6 +1,6 @@
 {
   "retrieved": "2026-10-22",
-  "source": "Niamito official website, reused for its internal dashboard at the brand owner’s request",
+  "source": "Niamito official website, reused for its internal dashboard at the brand owner\u2019s request",
   "files": {
     "lineup.webp": "https://niamito.com/wp-content/uploads/2026/08/Tasting-box_2-768x768.webp",
     "cookie.webp": "https://niamito.com/wp-content/uploads/2025/09/UHT-Cookie_1.webp",
@@ -12,6 +12,8 @@
     "spinach.webp": "https://niamito.com/wp-content/uploads/2023/05/HPP-Spinach_1.webp",
     "right-grotesk-regular.ttf": "https://niamito.com/wp-content/themes/logineko/dist/PPRightGrotesk-Regular.d9c6177c.ttf",
     "right-grotesk-medium.ttf": "https://niamito.com/wp-content/themes/logineko/dist/PPRightGrotesk-Medium.508888ae.ttf",
-    "logo.svg": "https://niamito.com/ (top-banner logo)"
-  }
+    "logo.svg": "https://niamito.com/ (top-banner logo)",
+    "oatmeal.webp": "https://storage.googleapis.com/logineko-origin-production-media-public/tenants/5b7bfcaa-6481-552c-b366-8b3f4e8ec32c/media/e0cfe863-6351-5ca4-b0bd-1ad0db3f2560/original.webp"
+  },
+  "oatmeal_reference": "https://app.origin.logineko.com/en/records/84e8cb65-4ab2-5181-89d2-36357e6e2dcb"
 }

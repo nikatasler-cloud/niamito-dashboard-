@@ -205,11 +205,44 @@ def render_marketing(data, primary, secondary, allocations=None):
     note('Investment focus', f'{top.index[0]} accounts for €{top.iloc[0]:,.0f}' +
          (f' ({top.iloc[0]/spend:.0%}) of this selection.' if spend > 0 else '.') +
          ' Open the breakdown to compare products, stores and source channels.')
-    allocation_tab, spend_tab, breakdown_tab, impact_tab, records_tab = st.tabs(['Product allocation', 'Spend trend', 'Product & retail', 'Sales context', 'Records & actions'])
+    # Retain the original units-versus-investment analysis, ahead of the
+    # detailed source views. A missing month stays missing in its own series.
+    if not secondary.empty:
+        monthly_units = secondary.groupby(secondary.week.dt.to_period('M').dt.to_timestamp())['bottles_sold'].sum()
+        monthly_units.index.name = 'month'
+        monthly_cost = monthly_spend(selected).set_index('month')['total_spend']
+        context = monthly_units.rename('units').to_frame().join(monthly_cost, how='outer').sort_index()
+        fig = go.Figure(go.Bar(
+            x=context.index, y=context.units, name='Units sold · secondary',
+            marker_color=GREEN, opacity=.88,
+            hovertemplate='%{x|%b %Y}<br>%{y:,.0f} units<extra></extra>',
+        ))
+        fig.add_trace(go.Scatter(
+            x=context.index, y=context.total_spend, name='Marketing spend',
+            mode='lines+markers', yaxis='y2', connectgaps=False,
+            line=dict(color=PURPLE, width=2.5),
+            hovertemplate='%{x|%b %Y}<br>€%{y:,.2f}<extra></extra>',
+        ))
+        layout = base_layout('Secondary units sold vs marketing spend', 340)
+        layout['yaxis']['title'] = 'Units sold'
+        layout['yaxis2'] = dict(overlaying='y', side='right', showgrid=False,
+                               tickprefix='€', title='Marketing spend (€)')
+        layout['margin']['r'] = 70
+        fig.update_layout(**layout)
+        fig.update_xaxes(tickformat='%b %Y')
+        chart(fig, 'mkt_units_vs_spend')
+        st.caption('Units use reported consumer sell-out after the sidebar sales filters. Spend uses the marketing filters above. The axes have different units; this comparison shows timing and scale, not attribution. Missing expense months are not assumed to be zero.')
+    # Keep every analysis in the Marketing page instead of concealing charts
+    # and tables behind another layer of tabs.
+    allocation_tab, spend_tab, breakdown_tab, impact_tab, records_tab = [st.container() for _ in range(5)]
     with allocation_tab:
+        section('Product allocation', 'Recorded investment by product',
+                'The existing allocation model and detailed calendar remain separate sources.')
         if allocations.empty: st.info('No expense-model allocations are available for this period.')
         else: render_allocations(allocations,data)
     with spend_tab:
+        section('Spend trend', 'Investment over time',
+                'Monthly, cumulative and channel views stay together in this page.')
         left, right = st.columns([1.6,1])
         dated = selected.dropna(subset=['month'])
         with left:
@@ -233,10 +266,45 @@ def render_marketing(data, primary, secondary, allocations=None):
             chart(fig, 'mkt_cumulative')
         with c2:
             chart(horizontal_bars(selected, 'channel', 'Original source channels', 310), 'mkt_channels')
+        # Preserve the original annotated channel analysis and the combined
+        # monthly/cumulative view alongside the expanded marketing charts.
+        channel_counts = selected.groupby('channel').agg(
+            total_spend=('total_spend', 'sum'), records=('channel', 'size')
+        ).reset_index().sort_values('total_spend')
+        fig = go.Figure(go.Bar(
+            x=channel_counts.total_spend, y=channel_counts.channel, orientation='h',
+            marker_color=PURPLE,
+            text=[f'€{value:,.0f} · {count:,} records' for value, count in
+                  zip(channel_counts.total_spend, channel_counts.records)],
+            textposition='auto', customdata=channel_counts.records,
+            hovertemplate='%{y}<br>€%{x:,.2f}<br>%{customdata:,} expense records<extra></extra>',
+        ))
+        fig.update_layout(**base_layout('Spend & expense records by channel', 330))
+        fig.update_xaxes(tickprefix='€')
+        chart(fig, 'mkt_channel_records')
+        fig = go.Figure(go.Bar(
+            x=mo.month, y=mo.total_spend, name='Monthly spend', marker_color=PURPLE,
+            opacity=.7, hovertemplate='%{x|%b %Y}<br>€%{y:,.2f}<extra></extra>',
+        ))
+        fig.add_trace(go.Scatter(
+            x=mo.month, y=mo.cumulative, name='Cumulative spend', yaxis='y2',
+            mode='lines+markers', line=dict(color=GREEN, width=2.5),
+            hovertemplate='%{x|%b %Y}<br>Cumulative €%{y:,.2f}<extra></extra>',
+        ))
+        layout = base_layout('Monthly & cumulative marketing spend', 330)
+        layout['yaxis']['tickprefix'] = '€'
+        layout['yaxis2'] = dict(overlaying='y', side='right', showgrid=False,
+                               tickprefix='€', title='Cumulative spend (€)')
+        layout['margin']['r'] = 75
+        fig.update_layout(**layout)
+        fig.update_xaxes(tickformat='%b %Y')
+        chart(fig, 'mkt_monthly_cumulative')
         undated = selected[selected.start_dt.isna()].total_spend.sum()
         st.caption('Amounts are booked to the recorded start month. Months without records are not confirmed zero-spend months. No budget target is supplied.' +
                    (f' €{undated:,.2f} has no date and is excluded from time charts.' if undated else ''))
     with breakdown_tab:
+        section('Product & retail', 'Where activity is concentrated',
+                'Product, segment and retailer detail from the selected expense records.')
         c1,c2 = st.columns(2)
         with c1: chart(horizontal_bars(selected, 'product_family', 'Product family'), 'mkt_families')
         with c2: chart(horizontal_bars(selected, 'retailer', 'Retailers & shared activity'), 'mkt_retailers')
@@ -257,6 +325,8 @@ def render_marketing(data, primary, secondary, allocations=None):
             'share':st.column_config.NumberColumn('Share (0–1)',format='%.3f')})
         st.download_button('Download breakdown',csv_bytes(summary),'niamito_marketing_breakdown.csv','text/csv',key='download_mkt_summary')
     with impact_tab:
+        section('Sales context', 'Sales alongside investment',
+                'Keep reported sales and marketing costs visible without assuming attribution.')
         note('Spend and sales are context, not attribution',
              'The source does not link these expenses to incremental sales. Revenue divided by all spend is a blended ratio, not campaign ROAS. Sales below follow the sidebar category filter; marketing follows the filters above.', 'amber')
         mo = monthly_spend(selected)
@@ -286,6 +356,8 @@ def render_marketing(data, primary, secondary, allocations=None):
             st.subheader('Influencer activity')
             st.dataframe(influencers[['name','start','total_spend','reach','influencer']],hide_index=True,width='stretch')
     with records_tab:
+        section('Records & actions', 'The detail behind the view',
+                'Complete source records, original register fields and reconciliation actions.')
         search = st.text_input('Search expense names',placeholder='Try SPAR, Meta, UHT…',key='mkt_search')
         records = filter_marketing(selected,query=search).sort_values('start_dt',ascending=False)
         st.caption(f'{len(records)} records · €{records.total_spend.sum():,.2f}. Classification basis is included in the export.')
@@ -298,6 +370,18 @@ def render_marketing(data, primary, secondary, allocations=None):
             'total_spend':st.column_config.NumberColumn('Spend (€)',format='€%.2f'),
             'possible_duplicate':'Review duplicate'})
         st.download_button('Download selected records',csv_bytes(records),'niamito_marketing_records.csv','text/csv',key='download_mkt_records')
+        # Keep the original source-register columns visible as well as the
+        # expanded classification/reconciliation table above.
+        st.subheader('Source expense register')
+        register_cols = [col for col in ('id', 'name', 'channel', 'market', 'start', 'end',
+                                        'total_spend', 'roas') if col in records]
+        st.dataframe(records[register_cols], hide_index=True, width='stretch', column_config={
+            'id': 'ID', 'name': 'Expense / campaign name', 'channel': 'Channel', 'market': 'Market',
+            'start': 'Start', 'end': 'End',
+            'total_spend': st.column_config.NumberColumn('Spend (€)', format='€%.2f'),
+            'roas': st.column_config.NumberColumn('Source ROAS', format='%.2f×'),
+        })
+        st.caption('Original register fields are retained. An absent source ROAS stays blank; it is not inferred from overall sales.')
         actions = []
         for col,label,action in (
             ('product_family','Product allocation','Add the product family or a documented allocation key to the source.'),

@@ -132,7 +132,7 @@ def _sales_lens(primary, secondary, dimension, title):
     if comparison.empty:
         st.info('No sales records in this selection. Widen the period or product filter.')
         return
-    measure = st.radio('Compare by', ['Revenue (€)', 'Units'], horizontal=True,
+    measure = st.radio('Compare by', ['Units', 'Revenue (€)'], horizontal=True,
                        key='perspective_measure')
     suffix = 'units' if measure == 'Units' else 'revenue'
     a, b = st.columns(2)
@@ -150,7 +150,7 @@ def _sales_lens(primary, secondary, dimension, title):
 
 
 def render_perspectives(primary, secondary, marketing, allocations):
-    section('Different angles. Same Niamito.', 'Pick your point of view.',
+    section('Business perspectives', 'Explore performance',
             'Move from the whole business to the products, places and activity behind it. All views follow the reporting period.')
     lens = st.radio('Explore the business through', LENSES, horizontal=True,
                     key='perspective_lens')
@@ -164,15 +164,16 @@ def render_perspectives(primary, secondary, marketing, allocations):
         if data.empty:
             st.info('No retailer sell-out records in this selection.')
             return
-        nonzero = data[data.secondary_revenue != 0]
+        data = data.sort_values('secondary_units',ascending=False)
+        nonzero = data[data.secondary_units != 0]
         leading = nonzero.iloc[0] if not nonzero.empty else None
         kpis([
             ('Reporting retailer labels', f'{len(data):,}', 'Names as reported in the source'),
-            ('Consumer sell-out', f'€{data.secondary_revenue.sum():,.0f}', 'Secondary revenue only'),
+            ('Consumer units sold', f'{data.secondary_units.sum():,.0f}', f'€{data.secondary_revenue.sum():,.0f} sell-out revenue'),
             ('Largest recorded retailer', str(leading.retailer) if leading is not None else '—',
-             f'€{leading.secondary_revenue:,.0f} sell-out' if leading is not None else 'No non-zero revenue'),
+             f'{leading.secondary_units:,.0f} units sold' if leading is not None else 'No non-zero units'),
         ])
-        chart(_bar(data, 'retailer', 'secondary_revenue', 'Top 15 reported retailers', GREEN, limit=15),
+        chart(_bar(data, 'retailer', 'secondary_units', 'Top 15 retailers · units sold', GREEN, units=True, limit=15),
               'perspective_retailers')
         _table(data, 'retailer')
         st.download_button('Download all retailers', csv_bytes(data), 'niamito_retailer_perspective.csv',
