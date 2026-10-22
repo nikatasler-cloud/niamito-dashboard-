@@ -116,6 +116,20 @@ class InteractiveRegression(unittest.TestCase):
         at=AppTest.from_file(str(ROOT/'appreal.py'),default_timeout=60).run()
         self.assertEqual([x.message for x in at.exception],[])
 
+    def test_perspectives_and_product_shelf(self):
+        at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=60).run()
+        self.assertEqual([x.message for x in at.exception],[])
+        for lens in ('Product families','Flavours','Markets','Retailers','Marketing mix'):
+            at.radio(key='perspective_lens').set_value(lens).run()
+            self.assertEqual([x.message for x in at.exception],[])
+        at.radio(key='perspective_marketing_source').set_value('Product allocations').run()
+        self.assertEqual([x.message for x in at.exception],[])
+        at.radio(key='product_shelf_family').set_value('HPP').run()
+        self.assertEqual([x.message for x in at.exception],[])
+        markup=''.join(x.value for x in at.markdown)
+        self.assertIn('data:image/webp;base64,',markup)
+        self.assertIn('REAL FOOD.',markup)
+
 
 if __name__ == '__main__':
     unittest.main()

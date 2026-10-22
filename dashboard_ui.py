@@ -1,32 +1,42 @@
 """Shared visual language for Niamito's reporting workspace."""
 from html import escape
 from pathlib import Path
+import base64
 import streamlit as st
 import plotly.graph_objects as go
 
-INK = '#292322'
-MUTED = '#817875'
-PURPLE = '#9380DC'
-GREEN = '#497864'
-CORAL = '#D8876D'
-PALETTE = [PURPLE, GREEN, CORAL, '#C1A665', '#6E91AD', '#BF92B5', '#9B9690']
+INK = '#3F2111'
+MUTED = '#725B4B'
+PURPLE = '#6B83C1'
+GREEN = '#47814A'
+CORAL = '#D9665A'
+PALETTE = [PURPLE, GREEN, CORAL, '#CB9D37', '#8D6C9D', '#AA7C5C', '#9AB38B']
 
 
 def install_theme():
-    st.markdown('<style>' + Path(__file__).with_name('dashboard.css').read_text() + '</style>', unsafe_allow_html=True)
+    root = Path(__file__).parent
+    fonts = []
+    for filename, weight in (('right-grotesk-regular.ttf', 400), ('right-grotesk-medium.ttf', 600)):
+        font_path = root / 'assets' / 'brand' / filename
+        if font_path.exists():
+            encoded = base64.b64encode(font_path.read_bytes()).decode('ascii')
+            fonts.append("@font-face{font-family:'Niamito Right Grotesk';src:url(data:font/ttf;base64," +
+                         encoded + ") format('truetype');font-weight:" + str(weight) +
+                         ";font-style:normal;font-display:swap;}")
+    st.markdown('<style>' + ''.join(fonts) + root.joinpath('dashboard.css').read_text() + '</style>', unsafe_allow_html=True)
 
 
 def base_layout(title='', height=340, legend_below=True):
     return dict(
-        title=dict(text=title, font=dict(size=16, color=INK, family='Inter, sans-serif'), x=0),
+        title=dict(text=title, font=dict(size=17, color=INK, family='Niamito Right Grotesk, Arial, sans-serif'), x=0),
         height=height, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(family='Inter, sans-serif', size=12, color=MUTED),
+        font=dict(family='Niamito Right Grotesk, Arial, sans-serif', size=12, color=MUTED),
         colorway=PALETTE, margin=dict(l=12, r=20, t=54, b=45),
         legend=dict(orientation='h' if legend_below else 'v', y=-0.23 if legend_below else 1,
                     x=0, font=dict(size=11, color=INK), bgcolor='rgba(0,0,0,0)'),
-        xaxis=dict(showgrid=False, zeroline=False, linecolor='#E7E3DF', automargin=True),
-        yaxis=dict(gridcolor='#EEEAE7', zeroline=False, linecolor='#E7E3DF', automargin=True),
-        hoverlabel=dict(bgcolor='#FFFFFF', bordercolor='#E7E3DF', font=dict(color=INK, size=13)),
+        xaxis=dict(showgrid=False, zeroline=False, linecolor='#DCCEB6', automargin=True),
+        yaxis=dict(gridcolor='#ECE5D7', zeroline=False, linecolor='#DCCEB6', automargin=True),
+        hoverlabel=dict(bgcolor='#F8F5F0', bordercolor='#DCCEB6', font=dict(color=INK, size=13)),
         hovermode='x unified',
     )
 

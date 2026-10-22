@@ -18,14 +18,14 @@ warnings.filterwarnings("ignore")
 # ──────────────────────────────────────────────────────────────────────────────
 # BRAND
 # ──────────────────────────────────────────────────────────────────────────────
-BEIGE  = "#F8F7F5"
-BROWN  = "#292322"
-LAVEN  = "#9380DC"
-GREEN  = "#497864"
-CORAL  = "#D8876D"
-YELLOW = "#C8A84B"
-CREAM  = "#FFFFFF"
-MID    = "#817875"
+BEIGE  = "#ECE5D7"
+BROWN  = "#3F2111"
+LAVEN  = "#6B83C1"
+GREEN  = "#47814A"
+CORAL  = "#D9665A"
+YELLOW = "#CB9D37"
+CREAM  = "#F8F5F0"
+MID    = "#725B4B"
 
 def hex_alpha(hex_color, alpha):
     """Convert a 6-digit hex color + float alpha to an rgba() string."""
@@ -84,6 +84,8 @@ from dashboard_ui import install_theme, base_layout, section, note
 from dashboard_data import load_excel_cached, generate_demo_data
 from marketing import normalize_marketing, render_marketing, marketing_allocations
 from overview import render_overview, render_data
+from brand import render_brand_hero, render_flavour_gallery, logo_html
+from perspectives import render_perspectives
 from html import escape
 install_theme()
 
@@ -94,7 +96,7 @@ def caption(text):
 # SIDEBAR
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-brand"><b>niamito.</b><span>BUSINESS WORKSPACE</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-brand">' + logo_html() + '<span>BUSINESS WORKSPACE</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section">Reporting scope</div>', unsafe_allow_html=True)
     uploaded = st.file_uploader(
         "Data source",
@@ -293,12 +295,7 @@ if _nav_markets:
 # ──────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ──────────────────────────────────────────────────────────────────────────────
-st.markdown(
-    '<div class="hero"><div><div class="eyebrow">NIAMITO / ANALYTICS</div>'
-    '<h1>Business, in focus.</h1><p>Sales, marketing and product performance. One clear view.</p></div>'
-    f'<div class="source-pill">{"Demonstration data" if demo_mode else "Workbook snapshot"} · {escape(period)}</div></div>',
-    unsafe_allow_html=True,
-)
+render_brand_hero(period, demo_mode)
 
 tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Overview", "Sales", "Marketing", "Profitability", "Products", "Data & exports",
@@ -310,6 +307,7 @@ _allocation_end = end_ts if period == "Custom range" else today if period != "Al
 _marketing_allocations = marketing_allocations(exp_df, _allocation_start, _allocation_end)
 with tab0:
     render_overview(prim_f, so_f, mkt_f, prim_df, so_df, mkt_df, _marketing_allocations)
+    render_perspectives(prim_f, so_f, mkt_f, _marketing_allocations)
 with tab5:
     render_data(prim_f, so_f, mkt_f, exp_df, demo_mode)
 
@@ -1171,6 +1169,8 @@ with tab3:
 # TAB 4 · SKU PERFORMANCE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
+
+    render_flavour_gallery(prim_f, so_f)
 
     st.markdown("<h2>SKU Performance</h2>", unsafe_allow_html=True)
 

@@ -15,11 +15,11 @@ The app loads `Niamito_Master_Tables.xlsx` from the repository. An uploaded work
 
 ## Views
 
-- **Overview:** primary and secondary revenue, product mix, market results and source coverage. Primary and secondary figures are never added together.
+- **Overview:** primary and secondary revenue, a photographed product-family shelf, product mix, market results and source coverage. Five switchable perspectives explore product families, flavours, markets, retailers and marketing mix. Primary and secondary figures are never added together.
 - **Sales:** the existing primary/secondary breakdowns, market navigation, volume/revenue switch, year-over-year comparisons, annual goal and all six forecast methods with scenarios.
 - **Marketing:** recorded product allocations, monthly reconciliation, calendar spend trends, cumulative spend, ATL/BTL and supporting costs, product/retailer matrix, sales context, influencer records, search, exports and source-quality actions.
 - **Profitability:** the existing 2026 annual expense model and waterfall, with its annual cost and market-allocation limitations stated explicitly.
-- **Products:** the existing SKU comparisons, trends, ranking and market views.
+- **Products:** a UHT/HPP product shelf with real Niamito product photography and period-filtered performance, plus the existing SKU comparisons, trends, ranking and market views. Historical products remain in detailed tables.
 - **Data & exports:** typed records, CSV downloads and reporting definitions.
 
 ## Marketing sources and interpretation
@@ -45,6 +45,12 @@ Regression checks cover the repository workbook totals, September returns and re
 
 The workbook itself is unchanged by the redesign. Accounting allocation rules and forecast assumptions are retained rather than silently replaced.
 
+## Niamito identity and product imagery
+
+The dashboard uses Niamito's chocolate/cream/pastel identity, official logo, Right Grotesk web fonts and product photography from the brand's own website. Assets are bundled under `assets/brand` so rendering does not depend on image requests to a third party. `assets/brand/sources.json` records each original URL. The brand owner requested this reuse for its dashboard; any redistribution of these assets must respect the brand's existing rights and font licence.
+
+Kaša keeps a typographic family tile because no verified oatmeal photograph is included. Product images identify families/flavours; they do not imply current stock or availability. Product cards calculate primary revenue/units and secondary revenue independently from the selected records.
+
 ## Source structure
 
 - `appreal.py`: dashboard orchestration and retained detailed business views.
@@ -52,3 +58,5 @@ The workbook itself is unchanged by the redesign. Accounting allocation rules an
 - `dashboard_ui.py`, `dashboard.css`: visual system and export helpers.
 - `marketing.py`: marketing normalization, classification, analysis and allocations.
 - `overview.py`: executive overview and data explorer.
+- `brand.py`, `assets/brand`: bundled brand identity, product-family cards and flavour shelf.
+- `perspectives.py`: reconciled product, flavour, market, retailer and marketing views.

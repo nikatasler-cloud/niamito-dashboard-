@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from dashboard_ui import PURPLE, GREEN, PALETTE, base_layout, chart, section, note, kpis, csv_bytes
 from marketing import monthly_spend
+from brand import render_product_gallery
 
 
 def coverage(frame, date_col):
@@ -22,6 +23,7 @@ def render_overview(primary, secondary, marketing, full_primary, full_secondary,
           ('Consumer sell-out',f'€{sellout:,.0f}',f'{secondary.bottles_sold.sum():,.0f} units reported'),
           ('Allocated marketing costs',f'€{allocations.total_spend.sum():,.0f}' if not allocations.empty else '—',f'Calendar detail: €{spend:,.0f}'),
           ('Average invoiced price',f'€{gross/units:.2f}' if units > 0 else '—','Revenue / units in the selected scope')])
+    render_product_gallery(primary, secondary)
     c1,c2 = st.columns([1.7,1])
     with c1:
         fig = go.Figure()
