@@ -18,14 +18,14 @@ warnings.filterwarnings("ignore")
 # ──────────────────────────────────────────────────────────────────────────────
 # BRAND
 # ──────────────────────────────────────────────────────────────────────────────
-BEIGE  = "#EDE3D8"
-BROWN  = "#2C1A0E"
-LAVEN  = "#9497C4"
-GREEN  = "#6BA547"
-CORAL  = "#D4663C"
-YELLOW = "#C8A84B"
-CREAM  = "#F0E8DC"
-MID    = "#7A5230"
+BEIGE  = "#ECE5D7"
+BROWN  = "#3F2111"
+LAVEN  = "#6B83C1"
+GREEN  = "#47814A"
+CORAL  = "#D9665A"
+YELLOW = "#CB9D37"
+CREAM  = "#F8F5F0"
+MID    = "#725B4B"
 
 def hex_alpha(hex_color, alpha):
     """Convert a 6-digit hex color + float alpha to an rgba() string."""
@@ -80,1245 +80,24 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CSS
-# ──────────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+from dashboard_ui import install_theme, base_layout, section, note
+from dashboard_data import load_excel_cached, generate_demo_data
+from marketing import normalize_marketing, render_marketing, marketing_allocations
+from overview import render_overview, render_data
+from brand import render_brand_hero, render_flavour_gallery, logo_html
+from perspectives import render_perspectives
+from html import escape
+install_theme()
 
-/* ─────────────────────────────────────────────────
-   BASE
-───────────────────────────────────────────────── */
-html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label, button, input {
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif !important;
-    -webkit-font-smoothing: antialiased !important;
-    -moz-osx-font-smoothing: grayscale !important;
-}
-
-/* ── main content text: always dark ─────────── */
-.main .stMarkdown p,
-.main .stMarkdown span,
-.main .stMarkdown div,
-.main p,
-.main span,
-[data-testid="stMain"] p,
-[data-testid="stMain"] span,
-[data-testid="stMain"] li,
-[data-testid="stMain"] small,
-[data-testid="stMain"] caption {
-    color: #2C1A0E !important;
-}
-[data-testid="stMain"] h1,
-[data-testid="stMain"] h2,
-[data-testid="stMain"] h3,
-[data-testid="stMain"] h4 {
-    color: #1C1008 !important;
-}
-/* info / warning / caption boxes: force dark text */
-[data-testid="stMain"] [data-testid="stAlert"] *,
-[data-testid="stMain"] [data-testid="stCaptionContainer"] * {
-    color: #2C1A0E !important;
-}
-
-/* ─────────────────────────────────────────────────
-   APP BACKGROUND
-───────────────────────────────────────────────── */
-.stApp { background-color: #EEE6DC; }
-
-/* ─────────────────────────────────────────────────
-   SIDEBAR
-───────────────────────────────────────────────── */
-section[data-testid="stSidebar"] {
-    background: #1C1008 !important;
-    border-right: 1px solid rgba(255,255,255,0.06) !important;
-}
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div,
-section[data-testid="stSidebar"] label {
-    color: rgba(240,232,220,0.70) !important;
-}
-section[data-testid="stSidebar"] .stMarkdown small {
-    color: rgba(240,232,220,0.40) !important;
-    font-size: 10px !important;
-}
-
-/* hide sidebar collapse button */
-[data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarHeader"] { display: none !important; }
-
-/* ── jump-to-market buttons: dark text on cream bg ── */
-section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button,
-section[data-testid="stSidebar"] .stButton button {
-    background: rgba(240,232,220,0.10) !important;
-    border: 1px solid rgba(240,232,220,0.18) !important;
-    border-radius: 10px !important;
-    color: rgba(240,232,220,0.90) !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    letter-spacing: 0.2px !important;
-}
-section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button:hover,
-section[data-testid="stSidebar"] .stButton button:hover {
-    background: rgba(240,232,220,0.20) !important;
-    border-color: rgba(240,232,220,0.35) !important;
-}
-section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button p,
-section[data-testid="stSidebar"] .stButton button p,
-section[data-testid="stSidebar"] [data-testid^="stBaseButton"] button span,
-section[data-testid="stSidebar"] .stButton button span {
-    color: rgba(240,232,220,0.90) !important;
-    font-weight: 600 !important;
-}
-
-/* ── section labels ─────────────────────── */
-section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-    color: rgba(240,232,220,0.35) !important;
-    font-weight: 600 !important;
-    margin-bottom: 6px !important;
-}
-
-/* ── upload drop zone ─────────────────────────────── */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1.5px dashed rgba(240,232,220,0.18) !important;
-    border-radius: 16px !important;
-    transition: all 0.2s ease !important;
-    padding: 20px 16px !important;
-    text-align: center !important;
-}
-/* stretch the span wrapper so the button fills full width */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > span {
-    width: 100% !important;
-}
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
-    border-color: rgba(240,232,220,0.40) !important;
-    background: rgba(255,255,255,0.08) !important;
-}
-/* the browse button */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
-    background: #FFFFFF !important;
-    color: #111008 !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.1px !important;
-    padding: 9px 0 !important;
-    width: 100% !important;
-    transition: all 0.15s ease !important;
-    display: block !important;
-}
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
-    background: #ffffff !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-}
-/* hide the icon wrapper inside the button (hides icon + removes its flex gap) */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {
-    display: none !important;
-}
-/* force button text dark — overrides the broad sidebar rgba text rule */
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button p,
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span,
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button div {
-    color: #111008 !important;
-    font-weight: 600 !important;
-    font-size: 12px !important;
-}
-/* hide file size / format hint */
-[data-testid="stFileUploaderDropzoneInstructions"],
-section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
-    display: none !important;
-}
-
-/* ── uploaded file card — force dark text on light background ── */
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"],
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFileData"],
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] {
-    background: #FFFFFF !important;
-    border-radius: 10px !important;
-}
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] p,
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] span,
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] small,
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] div,
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] * {
-    color: #1C1008 !important;
-    opacity: 1 !important;
-}
-/* progress bar under uploaded file */
-section[data-testid="stSidebar"] [data-testid="stFileUploader"] [role="progressbar"] {
-    display: none !important;
-}
-
-/* ── date range picker ───────────────────── */
-section[data-testid="stSidebar"] [data-testid="stDateInput"] label {
-    display: none !important;
-}
-section[data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(240,232,220,0.15) !important;
-    border-radius: 12px !important;
-    padding: 2px 4px !important;
-}
-section[data-testid="stSidebar"] [data-testid="stDateInput"] input {
-    color: rgba(240,232,220,0.85) !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    text-align: center !important;
-    background: transparent !important;
-}
-section[data-testid="stSidebar"] [data-testid="stDateInput"] input::placeholder {
-    color: rgba(240,232,220,0.35) !important;
-}
-
-/* ── multiselect ──────────────────────────── */
-section[data-testid="stSidebar"] span[data-baseweb="tag"] {
-    background: rgba(240,232,220,0.12) !important;
-    border: 1px solid rgba(240,232,220,0.20) !important;
-    border-radius: 999px !important;
-    font-size: 11px !important;
-    font-weight: 500 !important;
-    padding: 3px 10px !important;
-}
-section[data-testid="stSidebar"] [data-baseweb="select"] > div {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(240,232,220,0.12) !important;
-    border-radius: 12px !important;
-}
-
-/* ── period radio → pill buttons ─────────── */
-section[data-testid="stSidebar"] [data-testid="stRadio"] > div {
-    gap: 3px !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-section[data-testid="stSidebar"] label[data-baseweb="radio"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 10px !important;
-    padding: 8px 14px !important;
-    transition: all 0.15s ease !important;
-    cursor: pointer !important;
-    width: 100% !important;
-}
-section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
-    background: rgba(237,221,210,0.13) !important;
-    border-color: rgba(240,232,220,0.22) !important;
-}
-section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
-    display: none !important;
-}
-
-/* ─────────────────────────────────────────────────
-   MAIN CONTENT
-───────────────────────────────────────────────── */
-.block-container {
-    padding-top: 1.8rem !important;
-    padding-bottom: 3rem !important;
-    max-width: 1400px !important;
-}
-
-/* ── metric cards ─────────────────────────── */
-div[data-testid="metric-container"] {
-    background: #F9F4EF;
-    border: 1px solid rgba(44,26,14,0.10);
-    border-radius: 16px;
-    padding: 16px 20px;
-    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.06), 0 2px 6px rgba(44,26,14,0.04), 0 8px 20px rgba(44,26,14,0.07);
-}
-div[data-testid="metric-container"] label {
-    color: #6b4c30 !important;
-    font-size: 11px !important;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    font-weight: 600 !important;
-}
-div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #1C1008 !important;
-    font-size: 28px !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.5px !important;
-}
-div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 12px !important;
-}
-
-/* ── tabs ─────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: rgba(44,26,14,0.07) !important;
-    border-radius: 12px !important;
-    padding: 4px !important;
-    border-bottom: none !important;
-}
-.stTabs [data-baseweb="tab"] {
-    color: rgba(44,26,14,0.55);
-    border-radius: 8px !important;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 7px 16px;
-    background: transparent !important;
-    border: none !important;
-    transition: all 0.15s ease !important;
-}
-.stTabs [aria-selected="true"] {
-    color: #1C1008 !important;
-    font-weight: 600 !important;
-    background: #FFFFFF !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
-}
-
-/* ── iOS segmented control — main content radios ─ */
-.stMain [data-testid="stRadio"] > div[role="radiogroup"] {
-    display: inline-flex !important;
-    flex-direction: row !important;
-    background: rgba(44,26,14,0.07) !important;
-    border-radius: 10px !important;
-    padding: 3px !important;
-    gap: 2px !important;
-}
-.stMain label[data-baseweb="radio"] {
-    border-radius: 8px !important;
-    padding: 5px 14px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    color: rgba(44,26,14,0.55) !important;
-    transition: all 0.15s ease !important;
-    cursor: pointer !important;
-    border: none !important;
-    background: transparent !important;
-}
-.stMain label[data-baseweb="radio"]:has(input:checked) {
-    background: #FFFFFF !important;
-    color: #1C1008 !important;
-    font-weight: 600 !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 1px 1px rgba(0,0,0,0.06) !important;
-}
-.stMain label[data-baseweb="radio"] > div:first-child { display: none !important; }
-
-/* ── chart captions ───────────────────────── */
-p.chart-caption {
-    font-size: 12.5px;
-    color: #8a6a4a;
-    line-height: 1.55;
-    margin-top: 6px;
-    margin-bottom: 18px;
-    max-width: 520px;
-}
-
-/* ── demo badge ───────────────────────────── */
-.demo-badge {
-    background: #EDD96A;
-    color: #2C1A0E;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 3px 10px;
-    border-radius: 999px;
-    vertical-align: middle;
-}
-
-/* ── page header ──────────────────────────── */
-.page-header {
-    font-size: 22px;
-    font-weight: 700;
-    color: #1C1008;
-    letter-spacing: -0.4px;
-    margin-bottom: 2px;
-}
-.context-line {
-    font-size: 12px;
-    color: #8a6a4a;
-    margin-bottom: 20px;
-    font-weight: 500;
-}
-
-/* ── dataframe toolbar (Download / Search / Fullscreen) ── */
-[data-testid="stDataFrame"] [class*="toolbar"],
-[data-testid="stDataFrame"] [class*="Toolbar"],
-[data-testid="stElementToolbar"],
-[data-testid="stElementToolbarButton"] {
-    background: #F9F4EF !important;
-    border: 1px solid rgba(44,26,14,0.15) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 8px rgba(44,26,14,0.12) !important;
-}
-[data-testid="stElementToolbarButton"] button,
-[data-testid="stElementToolbarButton"] svg,
-[data-testid="stElementToolbar"] button,
-[data-testid="stElementToolbar"] svg {
-    color: #2C1A0E !important;
-    fill: #2C1A0E !important;
-    stroke: #2C1A0E !important;
-}
-[data-testid="stElementToolbarButton"] button:hover {
-    background: #EDE3D8 !important;
-}
-/* tooltip text inside toolbar */
-[data-testid="stElementToolbar"] [class*="tooltip"],
-[data-testid="stElementToolbar"] span {
-    color: #2C1A0E !important;
-    background: #F9F4EF !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CAPTION HELPER
-# ──────────────────────────────────────────────────────────────────────────────
 def caption(text):
-    st.markdown(f"<p class='chart-caption'>{text}</p>", unsafe_allow_html=True)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CHART LAYOUT HELPER
-# ──────────────────────────────────────────────────────────────────────────────
-def base_layout(title="", height=340, legend_below=True):
-    leg = dict(
-        orientation="h", y=-0.20, x=0,
-        font=dict(size=10, color=BROWN),
-        bgcolor="rgba(0,0,0,0)",
-    ) if legend_below else dict(font=dict(size=10, color=BROWN), bgcolor="rgba(0,0,0,0)")
-    return dict(
-        title=dict(text=title, font=dict(color=BROWN, size=13, family="Georgia"), x=0, pad=dict(l=6)),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor=CREAM,
-        font=dict(color=BROWN, size=11, family="Arial"),
-        height=height,
-        margin=dict(l=12, r=12, t=44, b=20),
-        legend=leg,
-        xaxis=dict(gridcolor="#e8ddd0", gridwidth=1, zeroline=False, linecolor="#c8b89a"),
-        yaxis=dict(gridcolor="#e8ddd0", gridwidth=1, zeroline=False, linecolor="#c8b89a"),
-        hoverlabel=dict(bgcolor=CREAM, bordercolor=BROWN, font=dict(color=BROWN, size=11)),
-    )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# DEMO DATA — Niamito realistic structure Jan 2024–Apr 2026
-# ──────────────────────────────────────────────────────────────────────────────
-@st.cache_data
-def generate_demo_data():
-    rng = np.random.default_rng(42)
-
-    PRODUCTS = {
-        # Fresh Meal (HPP 390g)
-        "APL05": {"name": "Fresh Meal Apple 390g",       "price": 4.20, "bpc": 1, "line": "Niamito Fresh Meal"},
-        "BLU05": {"name": "Fresh Meal Blueberry 390g",   "price": 4.20, "bpc": 1, "line": "Niamito Fresh Meal"},
-        "SPN05": {"name": "Fresh Meal Spinach 390g",     "price": 4.20, "bpc": 1, "line": "Niamito Fresh Meal"},
-        "STR05": {"name": "Fresh Meal Strawberry 390g",  "price": 4.20, "bpc": 1, "line": "Niamito Fresh Meal"},
-        # Oatmeal
-        "BLK05": {"name": "Blueberry Oat",               "price": 3.50, "bpc": 1, "line": "Niamito Oatmeal"},
-        "CHK05": {"name": "Choco Oat",                   "price": 3.50, "bpc": 1, "line": "Niamito Oatmeal"},
-        "PCK05": {"name": "Peach Oat",                   "price": 3.50, "bpc": 1, "line": "Niamito Oatmeal"},
-        # Meal in a Bottle (UHT 470ml)
-        "COU05-DE": {"name": "Meal in a Bottle Cocoa 470ml",   "price": 3.80, "bpc": 1, "line": "Niamito Meal in a Bottle"},
-        "CKU05-DE": {"name": "Meal in a Bottle Cookie 470ml",  "price": 3.80, "bpc": 1, "line": "Niamito Meal in a Bottle"},
-        "VAU05-DE": {"name": "Meal in a Bottle Vanilla 470ml", "price": 3.80, "bpc": 1, "line": "Niamito Meal in a Bottle"},
-    }
-
-    weeks = pd.date_range("2024-01-01", "2026-04-28", freq="W-MON")
-
-    # Base weekly bottles per SKU per market
-    BASE = {
-        "SI": {
-            "APL05": 120, "BLU05": 95, "SPN05": 60, "STR05": 80,
-            "BLK05": 70, "CHK05": 55, "PCK05": 50,
-            "COU05-DE": 0, "CKU05-DE": 0, "VAU05-DE": 0,
-        },
-        "HR": {
-            "APL05": 50, "BLU05": 40, "SPN05": 25, "STR05": 35,
-            "BLK05": 30, "CHK05": 25, "PCK05": 20,
-            "COU05-DE": 0, "CKU05-DE": 0, "VAU05-DE": 0,
-        },
-        "DE": {
-            "APL05": 0, "BLU05": 0, "SPN05": 0, "STR05": 0,
-            "BLK05": 0, "CHK05": 0, "PCK05": 0,
-            "COU05-DE": 80, "CKU05-DE": 65, "VAU05-DE": 55,
-        },
-    }
-
-    primary_rows = []
-    for i, wk in enumerate(weeks):
-        growth = 1 + i * 0.008
-        for mkt, sku_dict in BASE.items():
-            for sku, base_bottles in sku_dict.items():
-                if base_bottles == 0:
-                    continue
-                bottles = max(1, int(base_bottles * growth * rng.uniform(0.85, 1.18)))
-                price = PRODUCTS[sku]["price"]
-                gross = round(bottles * price, 2)
-                primary_rows.append({
-                    "week": wk,
-                    "market": mkt,
-                    "sku_id": sku,
-                    "sku_name": PRODUCTS[sku]["name"],
-                    "cases": 0,
-                    "bottles": bottles,
-                    "list_price": price,
-                    "gross_revenue": gross,
-                    "trade_discount": 0.0,
-                    "net_revenue": gross,
-                    "funnel_type": "3-tier" if mkt in ["SI", "HR"] else "2-tier",
-                    "category": PRODUCTS[sku]["line"],
-                })
-
-    prim_df = pd.DataFrame(primary_rows)
-    prim_df["category"] = prim_df["sku_name"].apply(get_product_category)
-
-    # ── Secondary sales (retail sell-out, SI only, no revenue) ────────────────
-    RETAILER_POOL = [f"Retailer_{i:03d}" for i in range(1, 224)]
-    so_rows = []
-    so_weeks = pd.date_range("2025-01-06", "2026-04-28", freq="W-MON")
-    si_skus = [k for k, v in PRODUCTS.items() if v["line"] in ("Niamito Fresh Meal", "Niamito Oatmeal")]
-    for wk in so_weeks:
-        n_retailers = rng.integers(30, 80)
-        chosen = rng.choice(RETAILER_POOL, size=n_retailers, replace=False)
-        for ret in chosen:
-            sku = rng.choice(si_skus)
-            units = int(rng.integers(2, 25))
-            so_rows.append({
-                "week": wk,
-                "market": "SI",
-                "retailer": ret,
-                "sku_id": sku,
-                "sku_name": PRODUCTS[sku]["name"],
-                "bottles_sold": units,
-                "consumer_price": 0.0,
-                "sellout_revenue": 0.0,
-                "funnel_type": "3-tier",
-                "category": PRODUCTS[sku]["line"],
-            })
-    so_df = pd.DataFrame(so_rows)
-    so_df["category"] = so_df["sku_name"].apply(get_product_category)
-
-    # ── Distributor stock (SI & HR) ───────────────────────
-    stock_rows = []
-    for mkt in ["SI", "HR"]:
-        stock = 0
-        for wk in weeks:
-            c_in = int(prim_df[(prim_df["market"] == mkt) & (prim_df["week"] == wk)]["bottles"].sum() // 12)
-            c_out = int(c_in * rng.uniform(0.72, 0.96))
-            stock = max(0, stock + c_in - c_out)
-            stock_rows.append({
-                "week": wk, "market": mkt,
-                "cases_in": c_in, "cases_out": c_out,
-                "stock_cases": stock,
-                "stock_to_sales": round(stock / max(c_out, 1), 2),
-            })
-    stock_df = pd.DataFrame(stock_rows)
-
-    # ── Marketing Calendar ────────────────────────────────
-    mkt_campaigns = [
-        {"id": "MKT-2024-001", "name": "Q1 Digital SI",           "channel": "Digital",     "market": "SI",  "start": "2024-01-15", "end": "2024-02-28", "media_spend": 2500, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-002", "name": "Spring Events SI",         "channel": "Events",      "market": "SI",  "start": "2024-03-01", "end": "2024-04-30", "media_spend": 3800, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-003", "name": "Mercator Listing Q1",      "channel": "Team",        "market": "SI",  "start": "2024-01-01", "end": "2024-01-01", "media_spend": 0,    "listing_fee": 4500, "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
-        {"id": "MKT-2024-004", "name": "Production Campaign",      "channel": "Production",  "market": "SI",  "start": "2024-05-01", "end": "2024-05-31", "media_spend": 1800, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-005", "name": "HR Market Launch",         "channel": "Events",      "market": "HR",  "start": "2024-06-01", "end": "2024-06-30", "media_spend": 3200, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-006", "name": "DE Launch Digital",        "channel": "Digital-Intl","market": "DE",  "start": "2024-07-01", "end": "2024-08-31", "media_spend": 5500, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-007", "name": "@healthysi Collab",        "channel": "Digital",     "market": "SI",  "start": "2024-09-10", "end": "2024-09-24", "media_spend": 700,  "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": "@healthysi", "reach": 32000, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2024-008", "name": "Q4 Traditional SI",        "channel": "Traditional", "market": "SI",  "start": "2024-10-01", "end": "2024-12-31", "media_spend": 4200, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2025-001", "name": "Jan Digital Push",         "channel": "Digital",     "market": "SI",  "start": "2025-01-15", "end": "2025-02-15", "media_spend": 2800, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2025-002", "name": "Spring Events HR",         "channel": "Events",      "market": "HR",  "start": "2025-03-01", "end": "2025-04-30", "media_spend": 3500, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2025-003", "name": "@fitnesswelt_de Collab",   "channel": "Digital-Intl","market": "DE",  "start": "2025-04-01", "end": "2025-04-21", "media_spend": 2000, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": "@fitnesswelt_de", "reach": 115000, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2025-004", "name": "Production 2025",          "channel": "Production",  "market": "SI",  "start": "2025-05-01", "end": "2025-05-31", "media_spend": 2100, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2025-005", "name": "Konzum Listing HR",        "channel": "Team",        "market": "HR",  "start": "2025-06-01", "end": "2025-06-01", "media_spend": 0,    "listing_fee": 3800, "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Store",  "window_days": 0},
-        {"id": "MKT-2025-006", "name": "Q4 Traditional SI",        "channel": "Traditional", "market": "SI",  "start": "2025-10-01", "end": "2025-12-31", "media_spend": 4800, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2026-001", "name": "Q1 Digital 2026",          "channel": "Digital",     "market": "SI",  "start": "2026-01-15", "end": "2026-02-28", "media_spend": 3200, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-        {"id": "MKT-2026-002", "name": "Spring Events 2026",       "channel": "Events",      "market": "SI",  "start": "2026-03-01", "end": "2026-04-30", "media_spend": 4100, "listing_fee": 0,    "trade_disc": 0,   "roas": None, "influencer": None, "reach": None, "scope": "Market", "window_days": 14},
-    ]
-    mkt_df = pd.DataFrame(mkt_campaigns)
-    mkt_df["total_spend"] = mkt_df["media_spend"] + mkt_df["listing_fee"] + mkt_df["trade_disc"]
-    mkt_df["attributed_sales"] = 0.0
-
-    return prim_df, so_df, mkt_df, stock_df, PRODUCTS
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# EXCEL LOADER (for real uploads)
-# ──────────────────────────────────────────────────────────────────────────────
-def load_excel(file):
-    """
-    Load Niamito_Master_Tables.xlsx and map all sheets to the app's
-    internal dataframe schema.
-    Returns (prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df).
-    """
-    def to_float(val):
-        """Safely convert a cell value to float, treating '-', '', None as 0."""
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return 0.0
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return 0.0
-
-    CHANNEL_TYPE_MAP = {
-        # Old Slovenian type names
-        "Ekipa": "Team",
-        "Produkcija": "Production",
-        "produkcija": "Production",
-        "Digitalni marketing": "Digital",
-        "Digitalni marketing AT": "Digital (AT)",
-        "Dogodki & promocije": "Events",
-        "Tradicionalni marketing": "Traditional",
-        "Influencer": "Influencer",
-        # New type names (current format)
-        "Influencerji": "Influencer",
-        "Media buy": "Digital",
-        "Promocije - event": "Events",
-        "Promocije - materiali": "Production",
-        # English pass-throughs
-        "Team": "Team",
-        "Digital": "Digital",
-        "Events": "Events",
-        "Traditional": "Traditional",
-        "Production": "Production",
-    }
-
-    import openpyxl as _opxl, re as _re
-
-    def _cell_val(v):
-        """Extract actual value from openpyxl cell — handles IFERROR formula wrappers that
-        Google Sheets / Excel use to cache computed values (IMPORTRANGE, DUMMYFUNCTION, etc.).
-        Works whether the workbook was opened with data_only=True (returns cached value directly)
-        or data_only=False (returns the formula string, from which we extract the fallback value)."""
-        if v is None:
-            return None
-        s = str(v)
-        if not s.startswith("="):
-            return v  # plain value — return as-is
-        # General IFERROR fallback: match the last , "string" or , number before closing paren
-        m = _re.search(r',\s*("([^"]*)"|([-]?\d+(?:\.\d+)?))\s*\)\s*$', s)
-        if m:
-            if m.group(2) is not None:    # quoted string fallback
-                return m.group(2)
-            try:
-                return float(m.group(3))  # numeric fallback
-            except Exception:
-                pass
-        return None  # formula with no usable fallback
-
-    # Use data_only=True so openpyxl returns cached formula results (e.g. =F2*2.98 → 2145.6).
-    # The workbook is always a user-supplied Excel file so cached values are present.
-    _wb = _opxl.load_workbook(file, data_only=True)
-
-    def _read_ws_rows(ws, header_row: int, data_start: int):
-        """Read a worksheet into a list of dicts, extracting values from formula wrappers."""
-        headers = [
-            (str(_cell_val(cell.value)).replace("\n", " ").strip()
-             if _cell_val(cell.value) is not None else f"_col{i}")
-            for i, cell in enumerate(ws[header_row])
-        ]
-        rows = []
-        for row in ws.iter_rows(min_row=data_start, values_only=False):
-            extracted = [_cell_val(cell.value) for cell in row]
-            if any(v is not None for v in extracted):
-                rows.append(dict(zip(headers, extracted)))
-        return headers, rows
-
-    # Read sheets with row-3 headers (standard sheets)
-    raw = {}
-    _PLAIN_HDR = ("primary", "secondary")   # these sheets have header in row 1
-    for s in _wb.sheetnames:
-        try:
-            ws = _wb[s]
-            _use_plain = any(k in s.lower() for k in _PLAIN_HDR)
-            _, rows = _read_ws_rows(ws,
-                                    header_row=1 if _use_plain else 3,
-                                    data_start=2 if _use_plain else 4)
-            if rows:
-                df = pd.DataFrame(rows).dropna(how="all")
-                raw[s] = df
-        except Exception:
-            pass
-
-    # Read Expenses sheet with row-1 headers
-    exp_raw = None
-    for s in _wb.sheetnames:
-        if "expense" in s.lower() or "Expense" in s:
-            try:
-                ws = _wb[s]
-                _, rows = _read_ws_rows(ws, header_row=1, data_start=2)
-                if rows:
-                    exp_raw = pd.DataFrame(rows).dropna(how="all")
-            except Exception:
-                pass
-            break
-
-    def find(keywords):
-        for name, df in raw.items():
-            if any(k.lower() in name.lower() for k in keywords):
-                return df, name
-        return None, None
-
-    prod_raw_df, _ = find(["Product"])
-    mkt_raw_df, _  = find(["Marketing", "Calendar"])
-    prim_raw_df, _ = find(["Primary", "Sales"])
-
-    # ── Sales Feed sheet → preferred primary sales source ────────────────────
-    # Header at row 4, data from row 5. Columns: Month, SKU Code, Product Name,
-    # Units Sold, Revenue ex-VAT (€), Product Line [auto], Year
-    _sf_prim_rows = []
-    _month_to_num = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
-                     "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
-    for _sn in _wb.sheetnames:
-        if "sales feed" in _sn.lower() or ("sales" in _sn.lower() and "feed" in _sn.lower()):
-            _ws_sf = _wb[_sn]
-            for _sfrow in _ws_sf.iter_rows(min_row=5, values_only=True):
-                _mo_raw, _sku_raw, _nm_raw, _units_raw, _rev_raw, _prod_line, _yr_raw = \
-                    (_sfrow[i] if i < len(_sfrow) else None for i in range(7))
-                # Skip rows without SKU or units
-                if not _sku_raw or (not _units_raw and not _rev_raw):
-                    continue
-                _mo_str = str(_mo_raw).strip() if _mo_raw else ""
-                _mo_num = _month_to_num.get(_mo_str)
-                if not _mo_num:
-                    continue
-                try:
-                    _yr = int(float(_yr_raw))
-                except (TypeError, ValueError):
-                    continue
-                _sf_prim_rows.append({
-                    "Invoice Date": pd.Timestamp(_yr, _mo_num, 1),
-                    "Internal SKU Code": str(_sku_raw).strip(),
-                    "Product Name": str(_nm_raw).strip() if _nm_raw else str(_sku_raw).strip(),
-                    "Bottles sold": _units_raw,
-                    "Gross Revenue (€)": _rev_raw,
-                    "Product Line": str(_prod_line).strip() if _prod_line else "",
-                    "Market": "DE" if "- DE" in str(_sku_raw).upper() else "SI",
-                })
-            break
-    if _sf_prim_rows:
-        prim_raw_df = pd.DataFrame(_sf_prim_rows)
-
-    # ── v9+ format: Primary Sales fallback (header in row 1) ─────────────────
-    elif prim_raw_df is None:
-        for _sn in _wb.sheetnames:
-            if "primary" in _sn.lower() and "sales" in _sn.lower():
-                _ws_ps = _wb[_sn]
-                _r1c1  = _cell_val(_ws_ps.cell(1, 1).value)
-                if _r1c1 and "Invoice Date" in str(_r1c1):
-                    _, _ps_rows = _read_ws_rows(_ws_ps, header_row=1, data_start=2)
-                    if _ps_rows:
-                        prim_raw_df = pd.DataFrame(_ps_rows).dropna(how="all")
-                break
-
-    # Find Secondary Sales sheet — detect whether row 1 is notes or real header
-    sec_raw_df = None
-    sec_name = None
-    for _sn in _wb.sheetnames:
-        if "secondary" in _sn.lower():
-            sec_name = _sn
-            _ws_sec = _wb[_sn]
-            _r1c1_sec = _cell_val(_ws_sec.cell(1, 1).value)
-            if _r1c1_sec and "DATE" in str(_r1c1_sec).upper():
-                # Row 1 is the real header
-                _, _sec_rows = _read_ws_rows(_ws_sec, header_row=1, data_start=2)
-            else:
-                # Row 1 is a notes/instruction row; real header is row 2
-                _, _sec_rows = _read_ws_rows(_ws_sec, header_row=2, data_start=3)
-            if _sec_rows:
-                sec_raw_df = pd.DataFrame(_sec_rows).dropna(how="all")
-            break
-
-    # Find Sell-out Template sheet
-    sot_raw_df = None
-    for name, df in raw.items():
-        if "sell" in name.lower() and "template" in name.lower():
-            sot_raw_df = df
-            break
-        if "sell" in name.lower() and name != sec_name:
-            sot_raw_df = df
-            break
-
-    # ── PRODUCTS dict ─────────────────────────────────────────────────────────
-    PRODUCTS = {}
-    prod_by_ret_name = {}
-    if prod_raw_df is not None:
-        ret_name_col = next((c for c in prod_raw_df.columns if "Retailer SKU Name" in c), None)
-        sku_col      = next((c for c in prod_raw_df.columns if "Internal SKU" in c), None)
-        name_col     = next((c for c in prod_raw_df.columns if "Product Name" in c), None)
-        for _, r in prod_raw_df.iterrows():
-            if pd.isna(r.get(sku_col, None)):
-                continue
-            sku = str(r[sku_col]).strip()
-            prd_name = str(r[name_col]).strip() if name_col else sku
-            PRODUCTS[sku] = {"name": prd_name, "price": 0.0, "bpc": 1}
-            if ret_name_col and pd.notna(r.get(ret_name_col)):
-                key = str(r[ret_name_col]).strip().lower()
-                prod_by_ret_name[key] = {"sku_id": sku, "sku_name": prd_name}
-
-    if not PRODUCTS:
-        PRODUCTS = {
-            "APL05": {"name": "Fresh Meal Apple 390g",       "price": 4.20, "bpc": 1},
-            "BLU05": {"name": "Fresh Meal Blueberry 390g",   "price": 4.20, "bpc": 1},
-            "SPN05": {"name": "Fresh Meal Spinach 390g",     "price": 4.20, "bpc": 1},
-            "STR05": {"name": "Fresh Meal Strawberry 390g",  "price": 4.20, "bpc": 1},
-            "BLK05": {"name": "Blueberry Oat",               "price": 3.50, "bpc": 1},
-            "CHK05": {"name": "Choco Oat",                   "price": 3.50, "bpc": 1},
-            "PCK05": {"name": "Peach Oat",                   "price": 3.50, "bpc": 1},
-            "COU05-DE": {"name": "Meal in a Bottle Cocoa 470ml",   "price": 3.80, "bpc": 1},
-            "CKU05-DE": {"name": "Meal in a Bottle Cookie 470ml",  "price": 3.80, "bpc": 1},
-            "VAU05-DE": {"name": "Meal in a Bottle Vanilla 470ml", "price": 3.80, "bpc": 1},
-        }
-
-    # ── Primary Sales → prim_df ───────────────────────────────────────────────
-    prim_rows = []
-    if prim_raw_df is not None:
-        date_col_p = next((c for c in prim_raw_df.columns if "Invoice Date" in c or "Date" in c), None)
-        # v9: "Market or Retailer"  |  old: "Market"
-        mkt_col_p  = next((c for c in prim_raw_df.columns if "Market" in c), None)
-        # v9: "SKU" (full name or code)  |  old: "Internal SKU Code"
-        sku_col_p  = next((c for c in prim_raw_df.columns
-                           if "Internal SKU Code" in c or "Internal SKU" in c
-                           or c.strip() == "SKU"), None)
-        name_col_p = next((c for c in prim_raw_df.columns if "Product Name" in c), None)
-        # v9: "Quantity (PCS)"  |  old: "Bottles sold"
-        btl_col_p  = next((c for c in prim_raw_df.columns
-                           if "Bottles sold" in c or "Bottles Sold" in c or "Bottles" in c
-                           or "Quantity" in c or "PCS" in c), None)
-        gross_col  = next((c for c in prim_raw_df.columns if "Gross Revenue" in c), None)
-
-        # v9 has "Market or Retailer" — retailer name, not market code
-        _is_retailer_col = mkt_col_p and "Retailer" in mkt_col_p
-
-        def _infer_market(raw_val: str, sku_str: str) -> str:
-            v = raw_val.strip().upper()
-            if v in ("SI", "SLO", "SLOVENIJA"):                         return "SI"
-            if v in ("HR", "HRV", "HRVATSKA"):                          return "HR"
-            if v in ("DE", "DEU", "DEUTSCHLAND"):                       return "DE"
-            # Infer from SKU — DE products contain "- DE"
-            if "- DE" in sku_str.upper() or sku_str.upper().endswith("DE"): return "DE"
-            # Known SI retailers
-            if any(k in v for k in ("PREMA","MERCATOR","SPAR","HOFER","PETROL",
-                                    "PTIČKA","ŽITO","TUSCH","INTERSPAR SI")):  return "SI"
-            # Known HR retailers
-            if any(k in v for k in ("KONZUM","STUDENAC","TOMMY","PLODINE",
-                                    "KAUFLAND HR","INTERSPAR HR")):             return "HR"
-            return "SI"  # default
-
-        def _resolve_sku(raw_sku: str):
-            """Return (sku_id, sku_name) from raw value (full name or internal code)."""
-            s = raw_sku.strip()
-            if s in PRODUCTS:                          # exact internal code match
-                return s, PRODUCTS[s]["name"]
-            key = s.lower()
-            if key in prod_by_ret_name:                # retailer name lookup
-                info = prod_by_ret_name[key]
-                return info["sku_id"], info["sku_name"]
-            for code in PRODUCTS:                      # prefix match (e.g. "APL05 Organic…")
-                if s.upper().startswith(code.upper()):
-                    return code, PRODUCTS[code]["name"]
-            return s, s                                # unknown — use raw as both id and name
-
-        for _, r in prim_raw_df.iterrows():
-            _sku_raw = r.get(sku_col_p)
-            if _sku_raw is None or (isinstance(_sku_raw, float) and pd.isna(_sku_raw)):
-                continue
-            sku_str = str(_sku_raw).strip()
-            if not sku_str:
-                continue
-
-            raw_date = r.get(date_col_p)
-            try:
-                week = pd.to_datetime(raw_date, errors="coerce")
-            except Exception:
-                week = pd.NaT
-
-            _mkt_raw = str(r.get(mkt_col_p, "SI")).strip() if mkt_col_p else "SI"
-            mkt = _infer_market(_mkt_raw, sku_str)
-
-            sku_id, sku_name = _resolve_sku(sku_str)
-            if name_col_p and pd.notna(r.get(name_col_p)):
-                sku_name = str(r.get(name_col_p)).strip() or sku_name
-
-            bottles = int(to_float(r.get(btl_col_p)))
-            gross   = to_float(r.get(gross_col))
-
-            # If Gross Revenue is blank, estimate from PRODUCTS list price
-            if gross == 0 and bottles > 0:
-                price = PRODUCTS.get(sku_id, {}).get("price", 0.0)
-                gross = round(price * bottles, 2)
-
-            if bottles == 0 and gross == 0:
-                continue
-
-            prim_rows.append({
-                "week":           week,
-                "market":         mkt,
-                "sku_id":         sku_id,
-                "sku_name":       sku_name,
-                "cases":          0,
-                "bottles":        bottles,
-                "list_price":     round(gross / max(bottles, 1), 4),
-                "gross_revenue":  gross,
-                "trade_discount": 0.0,
-                "net_revenue":    gross,
-                "funnel_type":    "3-tier" if mkt in ("SI", "HR") else "2-tier",
-            })
-
-    prim_df = pd.DataFrame(prim_rows) if prim_rows else pd.DataFrame(
-        columns=["week","market","sku_id","sku_name","cases","bottles",
-                 "list_price","gross_revenue","trade_discount","net_revenue","funnel_type"])
-    prim_df["category"] = prim_df["sku_name"].apply(get_product_category)
-
-    stock_df = pd.DataFrame(
-        columns=["week","market","cases_in","cases_out","stock_cases","stock_to_sales"])
-
-    # ── Secondary Sales → so_df ───────────────────────────────────────────────
-    so_rows = []
-
-    def _parse_sec_date(raw_date):
-        """Parse Secondary Sales date: handles DD.MM.YYYY / D.M.YY strings and datetime objects."""
-        if raw_date is None:
-            return pd.NaT
-        import datetime as _dt2
-        if isinstance(raw_date, (_dt2.datetime, _dt2.date)):
-            return pd.Timestamp(raw_date)
-        s = str(raw_date).strip()
-        if _re.match(r"\d{1,2}\.\d{1,2}\.\d{2,4}", s):
-            parts = s.split(".")
-            try:
-                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
-                if y < 100:
-                    y += 2000
-                return pd.Timestamp(y, m, d)
-            except Exception:
-                pass
-        return pd.to_datetime(s, errors="coerce")
-
-    def _parse_secondary_row(r, date_col, retail_col, sku_col_s, pcs_col, rev_col=None, mkt_col=None):
-        week     = _parse_sec_date(r.get(date_col))
-        retailer = str(r.get(retail_col, "")).strip() if retail_col else ""
-        sku_raw  = str(r.get(sku_col_s, "")).strip() if sku_col_s else ""
-        prod_info = prod_by_ret_name.get(sku_raw.lower(), {"sku_id": sku_raw, "sku_name": sku_raw})
-        units = int(to_float(r.get(pcs_col)))
-        rev   = to_float(r.get(rev_col)) if rev_col else 0.0
-        mkt_raw = str(r.get(mkt_col, "")).strip().upper() if mkt_col else "SI"
-        market  = mkt_raw if mkt_raw in ("SI", "HR", "DE", "PL", "CH", "AT", "ME") else "SI"
-        return {
-            "week":            week,
-            "market":          market,
-            "retailer":        retailer,
-            "sku_id":          prod_info["sku_id"],
-            "sku_name":        prod_info["sku_name"],
-            "bottles_sold":    units,
-            "consumer_price":  round(rev / units, 2) if units > 0 and rev > 0 else 0.0,
-            "sellout_revenue": round(rev, 2),
-            "funnel_type":     "3-tier",
-        }
-
-    if sec_raw_df is not None:
-        date_col_s   = next((c for c in sec_raw_df.columns if "DATE" in c.upper() or "Date" in c), None)
-        retail_col_s = next((c for c in sec_raw_df.columns if "RETAIL" in c.upper() or "Store" in c or "Retail" in c), None)
-        sku_col_s    = next((c for c in sec_raw_df.columns if c.upper() == "SKU" or "SKU" in c), None)
-        pcs_col_s    = next((c for c in sec_raw_df.columns if c.upper() == "PCS" or "PCS" in c or "Units" in c), None)
-        rev_col_s    = next((c for c in sec_raw_df.columns if "Revenue" in c or "REVENUE" in c.upper()), None)
-        mkt_col_s    = next((c for c in sec_raw_df.columns if "Channel" in c or "CHANNEL" in c.upper() or "Market" in c), None)
-        for _, r in sec_raw_df.iterrows():
-            if pd.isna(r.get(pcs_col_s)):
-                continue
-            row_data = _parse_secondary_row(r, date_col_s, retail_col_s, sku_col_s, pcs_col_s, rev_col_s, mkt_col_s)
-            if row_data["bottles_sold"] != 0 or row_data["sellout_revenue"] != 0:
-                so_rows.append(row_data)
-
-    # Sell-out Template — merge additional rows
-    if sot_raw_df is not None:
-        date_col_t  = next((c for c in sot_raw_df.columns if "Date" in c), None)
-        store_col_t = next((c for c in sot_raw_df.columns if "Store" in c or "Retail" in c), None)
-        mkt_col_t   = next((c for c in sot_raw_df.columns if "Market" in c), None)
-        name_col_t  = next((c for c in sot_raw_df.columns if "Product Name" in c), None)
-        units_col_t = next((c for c in sot_raw_df.columns if "Units" in c), None)
-        rev_col_t   = next((c for c in sot_raw_df.columns if "Revenue" in c), None)
-        for _, r in sot_raw_df.iterrows():
-            if pd.isna(r.get(units_col_t)):
-                continue
-            raw_date = r.get(date_col_t)
-            try:
-                week = pd.to_datetime(raw_date, errors="coerce")
-            except Exception:
-                week = pd.NaT
-            mkt = str(r.get(mkt_col_t, "SI")).strip() if mkt_col_t else "SI"
-            if mkt.upper() in ("SLO", "SLOVENIJA"):
-                mkt = "SI"
-            if mkt not in ("SI", "HR", "DE"):
-                mkt = "SI"
-            prd_raw = str(r.get(name_col_t, "")).strip() if name_col_t else ""
-            prod_info = prod_by_ret_name.get(prd_raw.lower(), {"sku_id": prd_raw, "sku_name": prd_raw})
-            units = int(to_float(r.get(units_col_t)))
-            rev   = to_float(r.get(rev_col_t)) if rev_col_t else 0.0
-            if units > 0:
-                so_rows.append({
-                    "week":            week,
-                    "market":          mkt,
-                    "retailer":        str(r.get(store_col_t, "")).strip() if store_col_t else "",
-                    "sku_id":          prod_info["sku_id"],
-                    "sku_name":        prod_info["sku_name"],
-                    "bottles_sold":    units,
-                    "consumer_price":  round(rev / units, 2) if units > 0 and rev > 0 else 0.0,
-                    "sellout_revenue": round(rev, 2),
-                    "funnel_type":     "3-tier" if mkt in ("SI", "HR") else "2-tier",
-                })
-
-    so_df = pd.DataFrame(so_rows) if so_rows else pd.DataFrame(
-        columns=["week","market","retailer","sku_id","sku_name","bottles_sold",
-                 "consumer_price","sellout_revenue","funnel_type"])
-    if not so_df.empty:
-        so_df["category"] = so_df["sku_name"].apply(get_product_category)
-    else:
-        so_df["category"] = pd.Series(dtype=str)
-
-    # ── Marketing Calendar → mkt_df ───────────────────────────────────────────
-    mkt_rows = []
-    # Read directly from openpyxl to avoid duplicate-header overwrite bug
-    _ws_mkt = None
-    for _sn in _wb.sheetnames:
-        if "marketing" in _sn.lower() or "calendar" in _sn.lower():
-            _ws_mkt = _wb[_sn]
-            break
-
-    if _ws_mkt is not None:
-        _mkt_all_rows = list(_ws_mkt.iter_rows(values_only=True))
-        _mkt_hdrs = [str(c).strip() if c else f"_col{i}" for i, c in enumerate(_mkt_all_rows[2])]
-
-        # Map header names to indices (first occurrence wins)
-        _hmap = {}
-        for _i, _h in enumerate(_mkt_hdrs):
-            if _h not in _hmap:
-                _hmap[_h] = _i
-
-        def _mkt_get(row, key, default=None):
-            idx = _hmap.get(key)
-            if idx is None:
-                return default
-            return row[idx] if idx < len(row) else default
-
-        def _parse_mkt_date(raw):
-            """Handle both Excel datetime objects and DD.MM.YYYY strings."""
-            if raw is None:
-                return ""
-            import datetime as _dt
-            if isinstance(raw, (_dt.datetime, _dt.date)):
-                return raw.strftime("%Y-%m-%d")
-            s = str(raw).strip()
-            # DD.MM.YYYY or DD.MM.YY
-            if _re.match(r"\d{1,2}\.\d{1,2}\.\d{2,4}", s):
-                parts = s.split(".")
-                try:
-                    d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
-                    if y < 100:
-                        y += 2000
-                    return f"{y:04d}-{m:02d}-{d:02d}"
-                except Exception:
-                    pass
-            return s[:10]
-
-        for _row in _mkt_all_rows[3:]:
-            if not any(v is not None for v in _row):
-                continue
-            cid      = _mkt_get(_row, "Campaign ID")
-            cam_name = str(_mkt_get(_row, "Campaign Name", "")).strip()
-            # Skip rows with neither an ID nor a campaign name
-            if cid is None and not cam_name:
-                continue
-            # Spend at column INDEX 6 always (first "TOTAL Spend (€)")
-            total_spend_raw = _row[6] if len(_row) > 6 else None
-            total = to_float(total_spend_raw)
-            if total == 0:
-                continue  # skip placeholder rows with no spend
-
-            raw_type = str(_mkt_get(_row, "Type", "")).strip()
-            channel  = CHANNEL_TYPE_MAP.get(raw_type, raw_type)
-
-            mkt_val = str(_mkt_get(_row, "Market", "")).strip()
-            if mkt_val.upper() in ("SLO", "SLOVENIJA"):
-                mkt_val = "SI"
-            if mkt_val not in ("SI", "HR", "DE", "PL", "CH", "AT", "ME"):
-                mkt_val = "SI"
-
-            start_raw = _mkt_get(_row, "Start Date")
-            end_raw   = _mkt_get(_row, "End Date")
-            start_str = _parse_mkt_date(start_raw)
-            end_str   = _parse_mkt_date(end_raw)
-
-            inf_val   = _mkt_get(_row, "Influencer Handle")
-            reach_val = _mkt_get(_row, "Estimated Reach")
-            scope_raw = _mkt_get(_row, "Attribution Scope")
-            window_raw= _mkt_get(_row, "Attribution Window (days)")
-
-            if scope_raw and pd.notna(scope_raw):
-                scope = "Market" if "market" in str(scope_raw).lower() else "Store"
-            else:
-                scope = "Market" if channel in ("Digital","Digital-Intl","Events","Traditional") else "Store"
-
-            inf_clean  = str(inf_val).strip() if inf_val and str(inf_val).strip() not in ("None","nan","") else None
-            reach_clean = to_float(reach_val) or None
-
-            mkt_rows.append({
-                "id":               str(cid).strip() if cid is not None else "",
-                "name":             cam_name,
-                "channel":          channel,
-                "market":           mkt_val,
-                "start":            start_str,
-                "end":              end_str,
-                "media_spend":      total,
-                "listing_fee":      to_float(_mkt_get(_row, "Listing Fees (€)")),
-                "trade_disc":       to_float(_mkt_get(_row, "Trade Discounts (€)")),
-                "total_spend":      total,
-                "roas":             None,
-                "attributed_sales": 0.0,
-                "influencer":       inf_clean,
-                "reach":            reach_clean,
-                "scope":            scope,
-                "window_days":      int(to_float(window_raw) or 14),
-            })
-
-    mkt_df = pd.DataFrame(mkt_rows) if mkt_rows else pd.DataFrame(
-        columns=["id","name","channel","market","start","end","media_spend",
-                 "listing_fee","trade_disc","total_spend","roas","attributed_sales",
-                 "influencer","reach","scope","window_days"])
-
-    # ── Expenses → exp_df + stock/promo from Excel ───────────────────────────
-    exp_rows = []
-    # ── Read Cost Allocation section directly from worksheet (own column layout) ─
-    # Structure: section header → instruction → col headers (Month|Stock|Promo|Internal) → 12 month rows
-    _ALLOC_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-    # Per-month dicts; summed for waterfall totals, kept for future monthly charts
-    _alloc = {m: {"stock": 0.0, "promo": 0.0, "internal": 0.0} for m in _ALLOC_MONTHS}
-    _xl_stock_val = _xl_promo_val = _xl_internal_val = 0.0
-
-    _ws_exp = None
-    for _sn in _wb.sheetnames:
-        if "expense" in _sn.lower():
-            _ws_exp = _wb[_sn]; break
-
-    if _ws_exp is not None:
-        # Find section header row by scanning col A for "COST ALLOCATION"
-        _sec_row = None
-        for _r in _ws_exp.iter_rows(min_col=1, max_col=1, values_only=False):
-            _v = _cell_val(_r[0].value)
-            if _v and "COST ALLOCATION" in str(_v).upper():
-                _sec_row = _r[0].row; break
-        if _sec_row is not None:
-            _data_start = _sec_row + 3
-            # Detect format by checking if first data cell is a month name (new monthly table)
-            # or a type label like "Active Stock" (old single-row format)
-            _first_cell = _cell_val(_ws_exp.cell(_data_start, 1).value)
-            _is_monthly = str(_first_cell).strip() in _ALLOC_MONTHS if _first_cell else False
-
-            if _is_monthly:
-                # ── New format: rows are months, cols 2/3/4 = stock/promo/internal ──
-                for _ri in range(_data_start, _data_start + 12):
-                    _mo = _cell_val(_ws_exp.cell(_ri, 1).value)
-                    if _mo not in _ALLOC_MONTHS:
-                        break
-                    _alloc[_mo]["stock"]    = to_float(_cell_val(_ws_exp.cell(_ri, 2).value))
-                    _alloc[_mo]["promo"]    = to_float(_cell_val(_ws_exp.cell(_ri, 3).value))
-                    _alloc[_mo]["internal"] = to_float(_cell_val(_ws_exp.cell(_ri, 4).value))
-            else:
-                # ── Old format: rows are types (Active Stock / Promo / Internal),
-                #    col 3 = Amount (€) possibly stored as "0,00 €" string ──
-                def _parse_euro_str(v):
-                    """Parse '1.234,56 €' or '1234.56' or float → float."""
-                    if v is None: return 0.0
-                    s = str(v).replace("€","").replace(" ","").replace(".","").replace(",",".")
-                    try: return float(s)
-                    except: return 0.0
-                for _ri in range(_data_start, _data_start + 10):
-                    _type = _cell_val(_ws_exp.cell(_ri, 1).value)
-                    if not _type: continue
-                    _type_s = str(_type).strip()
-                    _amt = _parse_euro_str(_cell_val(_ws_exp.cell(_ri, 3).value))
-                    if _type_s == "Active Stock":
-                        _xl_stock_val = _amt
-                    elif _type_s == "Promo & External":
-                        _xl_promo_val = _amt
-                    elif _type_s == "Internal Consumption":
-                        _xl_internal_val = _amt
-
-            _xl_stock_val    = _xl_stock_val    or sum(v["stock"]    for v in _alloc.values())
-            _xl_promo_val    = _xl_promo_val    or sum(v["promo"]    for v in _alloc.values())
-            _xl_internal_val = _xl_internal_val or sum(v["internal"] for v in _alloc.values())
-
-    # ── Parse expense data rows (skip allocation section) ────────────────────
-    if exp_raw is not None:
-        pl_col        = next((c for c in exp_raw.columns if "Product Line" in c), None)
-        sku_col_e     = next((c for c in exp_raw.columns if c.strip() == "SKU"), None)
-        mon_col       = next((c for c in exp_raw.columns if "Month" in c), None)
-        mat_col       = next((c for c in exp_raw.columns if "Material Cost" in c), None)
-        lab_col       = next((c for c in exp_raw.columns if "Labour Cost" in c or "Labor Cost" in c), None)
-        ovh_col       = next((c for c in exp_raw.columns if "Production Overhead" in c), None)
-        prod_col      = next((c for c in exp_raw.columns if "Production cost" in c
-                              and "Material" not in c and "Labour" not in c
-                              and "Labor" not in c and "Overhead" not in c), None)
-        log_col       = next((c for c in exp_raw.columns if "Logistics" in c), None)
-        mktg_col      = next((c for c in exp_raw.columns if "Marketing" in c and "Promo" in c), None)
-        if mktg_col is None:
-            mktg_col  = next((c for c in exp_raw.columns if "Marketing" in c), None)
-        promo_u_col   = next((c for c in exp_raw.columns if "Promotional Units" in c), None)
-        act_stock_col = next((c for c in exp_raw.columns if "Active Stock" in c), None)
-        int_usage_col = next((c for c in exp_raw.columns if "Internal Usage" in c), None)
-        _SKIP_PREFIXES = ("COST ALLOCATION", "Enter ", "Month", "Active", "Promo &", "Internal")
-        for _, r in exp_raw.iterrows():
-            pl_val = r.get(pl_col)
-            if pl_val is None or (isinstance(pl_val, float) and pd.isna(pl_val)):
-                continue
-            pl_str = str(pl_val).strip()
-            # Skip allocation section rows (header, note, column labels, month rows)
-            if pl_str.startswith(_SKIP_PREFIXES) or pl_str in _ALLOC_MONTHS:
-                continue
-            # Derive material / labour+overhead from dedicated columns when present;
-            # fall back to splitting production_cost 50/50 if columns are absent.
-            mat_val  = to_float(r.get(mat_col))  if mat_col  else None
-            lab_val  = to_float(r.get(lab_col))  if lab_col  else None
-            ovh_val  = to_float(r.get(ovh_col))  if ovh_col  else 0.0
-            prod_tot = to_float(r.get(prod_col))  if prod_col else (
-                           (mat_val or 0) + (lab_val or 0) + ovh_val)
-            if mat_val is None:
-                mat_val = prod_tot * 0.5
-            labour_overhead = prod_tot - mat_val  # labour + overhead combined
-            exp_rows.append({
-                "product_line":    pl_str,
-                "sku":             str(r.get(sku_col_e, "")).strip() if sku_col_e else "",
-                "month":           str(r.get(mon_col, "")).strip() if mon_col else "",
-                "material_cost":   mat_val,
-                "labour_overhead": labour_overhead,
-                "production_cost": prod_tot,
-                "logistics":       to_float(r.get(log_col)),
-                "marketing_promo": to_float(r.get(mktg_col)),
-                "promo_units":     to_float(r.get(promo_u_col))   if promo_u_col   else 0.0,
-                "active_stock":    abs(to_float(r.get(act_stock_col))) if act_stock_col else 0.0,
-                "internal_usage":  abs(to_float(r.get(int_usage_col))) if int_usage_col else 0.0,
-            })
-
-    exp_df = pd.DataFrame(exp_rows) if exp_rows else pd.DataFrame(
-        columns=["product_line","sku","month","material_cost","labour_overhead",
-                 "production_cost","logistics","marketing_promo",
-                 "promo_units","active_stock","internal_usage"])
-
-    return prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, _xl_stock_val, _xl_promo_val, _xl_internal_val
-
+    st.markdown(f"<p class='chart-caption'>{escape(text)}</p>", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
-        <div style='padding: 32px 4px 24px; text-align:center;'>
-            <div style='font-family:Georgia,serif; font-size:22px; font-weight:700;
-                        color:#EDE3D8; letter-spacing:-0.4px; line-height:1;'>Niamito</div>
-            <div style='font-size:9px; color:rgba(237,227,216,0.28); letter-spacing:3px;
-                        text-transform:uppercase; margin-top:6px; font-weight:500;'>Business Intelligence</div>
-        </div>
-    """, unsafe_allow_html=True)
-
+    st.markdown('<div class="sidebar-brand">' + logo_html() + '<span>BUSINESS WORKSPACE</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section">Reporting scope</div>', unsafe_allow_html=True)
     uploaded = st.file_uploader(
         "Data source",
         type=["xlsx"],
@@ -1338,9 +117,9 @@ with st.sidebar:
     if period == "Custom range":
         custom_range = st.date_input(
             "Date range",
-            value=(pd.Timestamp("2026-01-01").date(), pd.Timestamp("2026-04-28").date()),
+            value=(pd.Timestamp.today().replace(month=1, day=1).date(), pd.Timestamp.today().date()),
             min_value=pd.Timestamp("2024-01-01").date(),
-            max_value=pd.Timestamp("2026-12-31").date(),
+            max_value=pd.Timestamp.today().replace(month=12, day=31).date(),
             format="DD/MM/YYYY",
         )
 
@@ -1350,6 +129,7 @@ with st.sidebar:
         "Product Category",
         options=ALL_CATEGORIES,
         default=ALL_CATEGORIES,
+        help="Clear the selection to include all product categories. Marketing has its own filters.",
     )
 
     st.markdown(
@@ -1404,10 +184,11 @@ elif _AUTO_PATH.exists():
 
 if _data_source is not None:
     try:
-        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, xl_stock_val, xl_promo_val, xl_internal_val = load_excel(_data_source)
+        payload = uploaded.getvalue() if uploaded is not None else pathlib.Path(_data_source).read_bytes()
+        prim_df, so_df, mkt_df, stock_df, PRODUCTS, exp_df, xl_stock_val, xl_promo_val, xl_internal_val = load_excel_cached(payload)
         demo_mode = False
         _src_label = "auto-loaded from folder" if uploaded is None else "uploaded"
-        st.sidebar.success(f"Data {_src_label}")
+        st.sidebar.caption("Workbook loaded · " + ("uploaded file" if uploaded is not None else "GitHub snapshot"))
         if not prim_df.empty and "week" in prim_df.columns:
             latest_prim = prim_df["week"].max()
             if pd.notna(latest_prim):
@@ -1416,10 +197,15 @@ if _data_source is not None:
                     "Replace the Excel file to update."
                 )
     except Exception as e:
-        st.sidebar.error(f"Could not read file: {e}")
+        st.error(f"Could not read the workbook: {e}")
+        st.info("Upload a valid master workbook to continue.")
+        st.stop()
 
 if demo_mode:
+    st.warning("Demonstration mode: no master workbook was found. Upload your workbook to see actual figures.")
     prim_df, so_df, mkt_df, stock_df, PRODUCTS = generate_demo_data()
+
+mkt_df = normalize_marketing(mkt_df)
 
 prim_f  = prim_df.copy()
 so_f    = so_df.copy()
@@ -1434,7 +220,10 @@ if category_filter and len(category_filter) < len(ALL_CATEGORIES):
         so_f   = so_f[so_f["category"].isin(category_filter)]
 
 # ── Apply period filter ───────────────────────────────
-today = pd.Timestamp.today().normalize()
+today = pd.Timestamp.now(tz="Europe/Ljubljana").tz_localize(None).normalize()
+if period == "Custom range" and (not custom_range or len(custom_range) != 2):
+    st.info("Select both a start and end date to apply the range.")
+    st.stop()
 jan1_this_year = pd.Timestamp(f"{today.year}-01-01")
 
 if period == "Custom range":
@@ -1459,6 +248,11 @@ elif period == "Last 6 months":
     stock_f = stock_f[stock_f["week"] >= cutoff]
 # "All data" → no filter
 
+if period in ("This year (YTD)", "Last 3 months", "Last 6 months"):
+    prim_f = prim_f[prim_f["week"] <= today]
+    so_f = so_f[so_f["week"] <= today]
+    stock_f = stock_f[stock_f["week"] <= today]
+
 # Snapshot after period filter but before category filter — SKU tab shows all categories
 prim_f_nokcat = prim_f.copy()
 
@@ -1476,6 +270,9 @@ elif period == "Last 6 months":
 # "All data" → no filter
 
 
+if period in ("This year (YTD)", "Last 3 months", "Last 6 months"):
+    mkt_f = mkt_f[pd.to_datetime(mkt_f["start"], errors="coerce") <= today]
+
 # ── Sidebar: market jump nav (always visible, regardless of active tab) ───────
 _nav_flags  = {"SI": "🇸🇮", "HR": "🇭🇷", "ME": "🇲🇪", "DE": "🇩🇪", "PL": "🇵🇱", "CH": "🇨🇭", "AT": "🇦🇹"}
 _MARKET_ORDER = ["SI", "HR", "DE", "PL", "CH", "ME", "AT"]
@@ -1488,39 +285,31 @@ if _nav_markets:
             "color:rgba(237,227,216,0.55);margin:0 0 6px;'>Jump to market</p>",
             unsafe_allow_html=True,
         )
-        if st.button("🌍  All Markets", key="jnav___all__", use_container_width=True):
+        if st.button("🌍  All Markets", key="jnav___all__", width="stretch"):
             st.session_state["_scroll_target"] = "so-__all__"
         for _nm in _nav_markets:
             _nlabel = f"{_nav_flags.get(_nm,'')}  {_nm}"
-            if st.button(_nlabel, key=f"jnav_{_nm}", use_container_width=True):
+            if st.button(_nlabel, key=f"jnav_{_nm}", width="stretch"):
                 st.session_state["_scroll_target"] = f"so-{_nm}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ──────────────────────────────────────────────────────────────────────────────
-col_logo, col_title = st.columns([0.06, 0.94])
-with col_title:
-    st.markdown("<h1>Niamito · Business Intelligence</h1>", unsafe_allow_html=True)
-    st.markdown(
-        f"<p style='color:{MID}; font-size:12px; margin-top:-6px;'>"
-        f"{'Demo data — upload your Master Tables to see live numbers' if demo_mode else 'Live data'}"
-        f"  ·  Period: {period}</p>",
-        unsafe_allow_html=True,
-    )
+render_brand_hero(period, demo_mode)
 
-st.markdown("<hr>", unsafe_allow_html=True)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# TABS
-# ──────────────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Sales",
-    "Marketing",
-    "Profitability",
-    "SKU Performance",
+tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Overview", "Sales", "Marketing", "Profitability", "Products", "Data & exports",
 ])
-
+_allocation_start = (start_ts if period == "Custom range" else jan1_this_year if period == "This year (YTD)"
+                     else today - pd.DateOffset(months=3) if period == "Last 3 months"
+                     else today - pd.DateOffset(months=6) if period == "Last 6 months" else None)
+_allocation_end = end_ts if period == "Custom range" else today if period != "All data" else None
+_marketing_allocations = marketing_allocations(exp_df, _allocation_start, _allocation_end)
+with tab0:
+    render_overview(prim_f, so_f, mkt_f, prim_df, so_df, mkt_df, _marketing_allocations)
+    render_perspectives(prim_f, so_f, mkt_f, _marketing_allocations)
+with tab5:
+    render_data(prim_f, so_f, mkt_f, exp_df, demo_mode)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 · SALES  (Level 1 Sell-In  +  Level 2 Sell-Out)
@@ -1610,18 +399,10 @@ with tab1:
     _remaining = max(ANNUAL_GOAL - _ytd_2026, 0)
 
     def _kpi_card(label, value, delta_str=None, color=GREEN, delta_good=True):
-        _delta_html = (
-            f"<div style='font-size:11px;color:rgba(255,255,255,0.75);margin-top:6px;"
-            f"font-weight:500;'>{delta_str}</div>"
-            if delta_str else ""
-        )
         return (
-            f"<div style='background:{color};border-radius:12px;padding:16px 14px;"
-            f"min-height:108px;box-shadow:0 3px 10px rgba(0,0,0,0.18);'>"
-            f"<div style='font-size:9px;font-weight:700;color:rgba(255,255,255,0.65);"
-            f"letter-spacing:1.8px;text-transform:uppercase;margin-bottom:8px;'>{label}</div>"
-            f"<div style='font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.2;'>{value}</div>"
-            f"{_delta_html}</div>"
+            f"<div class='kpi-card' style='border-top:3px solid {color};'>"
+            f"<span>{escape(label)}</span><div class='kpi-value'>{escape(value)}</div>"
+            f"<small>{escape(delta_str or '')}</small></div>"
         )
 
     k1, k2, k3, k4, k5 = st.columns(5)
@@ -1677,7 +458,7 @@ with tab1:
         if metric_mode != "Pieces sold":
             l_sw["yaxis"]["tickprefix"] = "\u20ac"
         fig_sw.update_layout(**l_sw)
-        st.plotly_chart(fig_sw, use_container_width=True)
+        st.plotly_chart(fig_sw, width="stretch", theme=None, config={"displaylogo": False})
     else:
         st.info("No primary sales data.")
 
@@ -1841,7 +622,7 @@ with tab1:
         if _fc_y == "revenue":
             l_fc["yaxis"]["tickprefix"] = "\u20ac"
         fig_fc.update_layout(**l_fc)
-        st.plotly_chart(fig_fc, use_container_width=True)
+        st.plotly_chart(fig_fc, width="stretch", theme=None, config={"displaylogo": False})
 
     # ── Monthly performance table ─────────────────────────────────────────────
     if not prim_f.empty:
@@ -1864,7 +645,7 @@ with tab1:
             "<b>Monthly Performance</b></p>",
             unsafe_allow_html=True,
         )
-        st.dataframe(_mo_tbl_out, use_container_width=True, hide_index=True)
+        st.dataframe(_mo_tbl_out, width="stretch", hide_index=True)
 
     # ── Sales by category summary table ──────────────────────────────────────
     if not prim_f.empty:
@@ -1882,7 +663,7 @@ with tab1:
             "<b>Sales by Product Category</b></p>",
             unsafe_allow_html=True,
         )
-        st.dataframe(_cat_summary, use_container_width=True, hide_index=True)
+        st.dataframe(_cat_summary, width="stretch", hide_index=True)
 
     # ── divider between Level 1 and Level 2 ──────────────────────────────────
     st.markdown(
@@ -1996,7 +777,7 @@ with tab1:
                 "Sell-In Rev (€)": f"€{_so_rev:,.0f}" if _so_rev > 0 else "—",
             })
         _mx_df = pd.DataFrame(_matrix_rows)
-        st.dataframe(_mx_df, use_container_width=True, hide_index=True)
+        st.dataframe(_mx_df, width="stretch", hide_index=True)
 
         # Summary bar: Sell-In (to retail) by country
         if len(_so_markets_all) > 1:
@@ -2013,7 +794,7 @@ with tab1:
             l_sum = base_layout("Sell-In to Retail by Country (selected period)", height=280)
             l_sum["barmode"] = "group"
             fig_sum.update_layout(**l_sum)
-            st.plotly_chart(fig_sum, use_container_width=True, key="fig_sum_all")
+            st.plotly_chart(fig_sum, width="stretch", key="fig_sum_all")
 
         # ── PER-COUNTRY sections (long scroll) ───────────────────────────────
         for _mkt in _so_markets_all:
@@ -2118,7 +899,7 @@ with tab1:
                 l_gap["xaxis"]["tickangle"] = -35
                 l_gap["barmode"] = "stack"
                 fig_gap.update_layout(**l_gap)
-                st.plotly_chart(fig_gap, use_container_width=True, key=f"fig_gap_{_mkt}")
+                st.plotly_chart(fig_gap, width="stretch", key=f"fig_gap_{_mkt}")
 
             st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
 
@@ -2144,7 +925,7 @@ with tab1:
                     l_ret["margin"]["l"] = 230
                     l_ret["margin"]["r"] = 70
                     fig_ret.update_layout(**l_ret)
-                    st.plotly_chart(fig_ret, use_container_width=True, key=f"fig_ret_{_mkt}")
+                    st.plotly_chart(fig_ret, width="stretch", key=f"fig_ret_{_mkt}")
 
                 with col_mix:
                     _cat_mix = (_so2.groupby("sku_name")["bottles_sold"].sum()
@@ -2163,7 +944,7 @@ with tab1:
                         l_mix["legend"] = dict(orientation="v", x=1.02, y=0.5,
                                                font=dict(size=9, color=BROWN), bgcolor="rgba(0,0,0,0)")
                         fig_mix.update_layout(**l_mix)
-                        st.plotly_chart(fig_mix, use_container_width=True, key=f"fig_mix_{_mkt}")
+                        st.plotly_chart(fig_mix, width="stretch", key=f"fig_mix_{_mkt}")
 
                 # Retailer detail table
                 st.markdown(
@@ -2182,7 +963,7 @@ with tab1:
                              .reset_index().sort_values("units", ascending=False))
                     _rtbl.columns = ["Store", "Units Sold", "SKUs"]
                 _rtbl["Units Sold"] = _rtbl["Units Sold"].apply(lambda x: f"{int(x):,}")
-                st.dataframe(_rtbl, use_container_width=True, hide_index=True)
+                st.dataframe(_rtbl, width="stretch", hide_index=True)
 
             elif _so2.empty:
                 st.info(f"No sell-out data for {_mkt} in the selected period.")
@@ -2195,204 +976,14 @@ with tab1:
 # TAB 2 · MARKETING
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    ch_palette = [BROWN, LAVEN, GREEN, CORAL, YELLOW, MID, "#c8b89a"]
-
-    # ── KPI row ───────────────────────────────────────────────────────────────
-    total_spend_mkt = mkt_f["total_spend"].sum() if not mkt_f.empty else 0
-    n_campaigns     = len(mkt_f) if not mkt_f.empty else 0
-    avg_spend_camp  = total_spend_mkt / max(n_campaigns, 1)
-
-    _mkt_gross_rev = prim_f["gross_revenue"].sum() if not prim_f.empty else 0
-    _roi_per_eur   = _mkt_gross_rev / max(total_spend_mkt, 1)
-
-    mk1, mk2, mk3, mk4 = st.columns(4)
-    mk1.metric("Total Spend",          f"\u20ac{total_spend_mkt:,.0f}")
-    mk2.metric("Campaigns",            f"{n_campaigns}")
-    mk3.metric("Avg Spend / Campaign", f"\u20ac{avg_spend_camp:,.0f}")
-    mk4.metric("Revenue per € Spent",  f"€{_roi_per_eur:.2f}",
-               help="Gross revenue from primary sales ÷ total marketing spend. Shows how much revenue each €1 of marketing generates.")
-
-    st.markdown("<hr style='margin:8px 0 16px'>", unsafe_allow_html=True)
-
-    if mkt_f.empty:
-        st.info("No marketing data available.")
-    else:
-        # ── Key insight callout ───────────────────────────────────────────────
-        if not mkt_f.empty and total_spend_mkt > 0:
-            _top_ch     = mkt_f.groupby("channel")["total_spend"].sum().idxmax()
-            _top_ch_pct = mkt_f.groupby("channel")["total_spend"].sum().max() / total_spend_mkt * 100
-            _top_mkt    = mkt_f.groupby("market")["total_spend"].sum().idxmax()
-            _top_mkt_pct = mkt_f.groupby("market")["total_spend"].sum().max() / total_spend_mkt * 100
-            _n_months   = mkt_f["start"].apply(lambda x: pd.to_datetime(x, errors="coerce")).dt.to_period("M").nunique()
-            _avg_mo     = total_spend_mkt / max(_n_months, 1)
-            st.markdown(
-                f"<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;"
-                f"border-radius:6px;margin-bottom:14px;font-size:13px;color:#3a2e24;line-height:1.9;'>"
-                f"<b>Top channel:</b> {_top_ch} — {_top_ch_pct:.0f}% of total spend &nbsp;·&nbsp; "
-                f"<b>Top market:</b> {_top_mkt} — {_top_mkt_pct:.0f}% of budget &nbsp;·&nbsp; "
-                f"<b>Avg monthly spend:</b> €{_avg_mo:,.0f} across {_n_months} active months"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-        # ── Secondary sell-out vs Marketing spend ─────────────────────────────
-        if not so_f.empty:
-            _so_mkt_mo = so_f.copy()
-            _so_mkt_mo["_mkey"] = _so_mkt_mo["week"].dt.to_period("M").astype(str)
-            _so_mkt_mo["month"] = _so_mkt_mo["week"].dt.strftime("%b %Y")
-            _so_units_mo = (_so_mkt_mo.groupby(["_mkey","month"])["bottles_sold"]
-                            .sum().reset_index().sort_values("_mkey"))
-
-            _mk_mo2 = mkt_f.copy()
-            _mk_mo2["_mkey"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.to_period("M").astype(str)
-            _mk_mo2["month"] = pd.to_datetime(_mk_mo2["start"], errors="coerce").dt.strftime("%b %Y")
-            _mk_spend_mo2 = (_mk_mo2.groupby(["_mkey","month"])["total_spend"]
-                             .sum().reset_index().sort_values("_mkey"))
-
-            _so_mkt_merged = _so_units_mo.merge(
-                _mk_spend_mo2[["_mkey","month","total_spend"]], on=["_mkey","month"], how="outer"
-            ).sort_values("_mkey").fillna(0)
-
-            fig_so_mkt = go.Figure()
-            fig_so_mkt.add_trace(go.Bar(
-                x=_so_mkt_merged["month"], y=_so_mkt_merged["bottles_sold"],
-                name="Units Sold (secondary)", marker_color=GREEN, opacity=0.85, yaxis="y",
-                hovertemplate="%{x}: %{y:,} units<extra></extra>",
-            ))
-            fig_so_mkt.add_trace(go.Scatter(
-                x=_so_mkt_merged["month"], y=_so_mkt_merged["total_spend"],
-                name="Marketing Spend", mode="lines+markers",
-                line=dict(color=CORAL, width=2),
-                marker=dict(size=7, color=CORAL),
-                yaxis="y2",
-                hovertemplate="%{x}: \u20ac%{y:,.0f} spend<extra></extra>",
-            ))
-            l_so_mkt = base_layout("Secondary Units Sold vs Marketing Spend", height=300)
-            l_so_mkt["yaxis"]["title"] = dict(text="Units Sold", font=dict(size=10))
-            l_so_mkt["yaxis2"] = dict(
-                overlaying="y", side="right", tickprefix="\u20ac",
-                showgrid=False, tickfont=dict(color=CORAL, size=10),
-            )
-            l_so_mkt["xaxis"]["tickangle"] = -30
-            l_so_mkt["legend"]["orientation"] = "h"
-            l_so_mkt["legend"]["y"] = -0.25
-            fig_so_mkt.update_layout(**l_so_mkt)
-            st.plotly_chart(fig_so_mkt, use_container_width=True)
-
-        # ── Channel breakdown (full width) ────────────────────────────────────
-        col_ch_bar = st.container()
-        with col_ch_bar:
-            ch_spend = mkt_f.groupby("channel").agg(
-                spend=("total_spend","sum"),
-                n=("id","count"),
-            ).reset_index()
-            ch_spend = ch_spend[ch_spend["spend"] > 0].sort_values("spend", ascending=True)
-            fig_ch = go.Figure(go.Bar(
-                x=ch_spend["spend"],
-                y=ch_spend["channel"],
-                orientation="h",
-                marker=dict(color=ch_palette[:len(ch_spend)],
-                            line=dict(color=CREAM, width=0.8)),
-                text=[f"\u20ac{v:,.0f}  ·  {int(n)} campaign{'s' if n!=1 else ''}"
-                      for v, n in zip(ch_spend["spend"], ch_spend["n"])],
-                textposition="outside",
-                hovertemplate="<b>%{y}</b><br>\u20ac%{x:,.0f}<extra></extra>",
-            ))
-            l_ch = base_layout("Spend & Campaigns by Channel", height=300)
-            l_ch["xaxis"]["tickprefix"] = "\u20ac"
-            l_ch["margin"]["l"] = 120
-            l_ch["margin"]["r"] = 180
-            fig_ch.update_layout(**l_ch)
-            st.plotly_chart(fig_ch, use_container_width=True)
-
-        # ── Row 2: Monthly spend (stacked) + Cumulative burn curve ────────────
-        col_monthly, col_cum = st.columns(2)
-
-        _mk_mo = mkt_f.copy()
-        _mk_mo["_mkey"] = pd.to_datetime(_mk_mo["start"], errors="coerce").dt.to_period("M").astype(str)
-        _mk_mo["month"] = pd.to_datetime(_mk_mo["start"], errors="coerce").dt.strftime("%b %Y")
-        _monthly_ch = (_mk_mo.groupby(["_mkey","month","channel"])["total_spend"]
-                       .sum().reset_index().sort_values("_mkey"))
-        _monthly_tot = (_mk_mo.groupby(["_mkey","month"])["total_spend"]
-                        .sum().reset_index().sort_values("_mkey"))
-        _monthly_tot["cumulative"] = _monthly_tot["total_spend"].cumsum()
-
-        with col_monthly:
-            fig_mo = go.Figure()
-            for idx, ch in enumerate(_monthly_ch["channel"].unique()):
-                d = _monthly_ch[_monthly_ch["channel"] == ch]
-                fig_mo.add_trace(go.Bar(
-                    x=d["month"], y=d["total_spend"],
-                    name=ch,
-                    marker_color=ch_palette[idx % len(ch_palette)],
-                    hovertemplate=f"<b>{ch}</b><br>%{{x}}<br>\u20ac%{{y:,.0f}}<extra></extra>",
-                ))
-            l_mo = base_layout("Monthly Spend by Channel", height=320)
-            l_mo["barmode"] = "stack"
-            l_mo["yaxis"]["tickprefix"] = "\u20ac"
-            l_mo["xaxis"]["tickangle"] = -35
-            l_mo["legend"]["y"] = -0.30
-            fig_mo.update_layout(**l_mo)
-            st.plotly_chart(fig_mo, use_container_width=True)
-
-        with col_cum:
-            fig_cum = go.Figure()
-            fig_cum.add_trace(go.Bar(
-                x=_monthly_tot["month"], y=_monthly_tot["total_spend"],
-                name="Monthly spend",
-                marker_color=LAVEN, opacity=0.7,
-                hovertemplate="%{x}<br>\u20ac%{y:,.0f}<extra></extra>",
-            ))
-            fig_cum.add_trace(go.Scatter(
-                x=_monthly_tot["month"], y=_monthly_tot["cumulative"],
-                name="Cumulative",
-                mode="lines+markers",
-                line=dict(color=BROWN, width=2.5),
-                marker=dict(size=6, color=BROWN),
-                yaxis="y2",
-                hovertemplate="%{x}<br>Cumulative: \u20ac%{y:,.0f}<extra></extra>",
-            ))
-            l_cum = base_layout("Budget Burn Rate (cumulative)", height=320)
-            l_cum["yaxis"]["tickprefix"] = "\u20ac"
-            l_cum["yaxis2"] = dict(
-                overlaying="y", side="right", showgrid=False,
-                tickprefix="\u20ac",
-                tickfont=dict(color=BROWN, size=10),
-            )
-            l_cum["xaxis"]["tickangle"] = -35
-            l_cum["legend"]["y"] = -0.30
-            fig_cum.update_layout(**l_cum)
-            st.plotly_chart(fig_cum, use_container_width=True)
-
-        # ── All campaigns table ───────────────────────────────────────────────
-        st.markdown(
-            f"<h2>All Campaigns</h2>"
-            f"<p style='font-size:11px;color:{MID};margin-top:-6px;'>"
-            f"{len(mkt_f)} campaigns · \u20ac{mkt_f['total_spend'].sum():,.0f} total in selected period</p>",
-            unsafe_allow_html=True,
-        )
-        _tbl_cols = [c for c in ["id","name","channel","market","start","end","total_spend","roas"]
-                     if c in mkt_f.columns]
-        _tbl = (mkt_f[_tbl_cols].copy()
-                .assign(_start_dt=lambda d: pd.to_datetime(d["start"], errors="coerce"))
-                .sort_values("_start_dt", ascending=False)
-                .drop(columns=["_start_dt"])
-                ).rename(columns={
-            "id": "ID", "name": "Campaign", "channel": "Channel",
-            "market": "Mkt", "start": "Start", "end": "End",
-            "total_spend": "Spend (\u20ac)", "roas": "ROAS",
-        })
-        if "Spend (\u20ac)" in _tbl.columns:
-            _tbl["Spend (\u20ac)"] = _tbl["Spend (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-        if "ROAS" in _tbl.columns:
-            _tbl["ROAS"] = _tbl["ROAS"].apply(lambda x: f"{x:.1f}\u00d7" if pd.notna(x) else "—")
-        st.dataframe(_tbl, use_container_width=True, hide_index=True)
-
+    render_marketing(mkt_f, prim_f, so_f, _marketing_allocations)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 · PROFITABILITY
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
+    note("2026 expense model", "This view retains the existing annual cost and inventory model. Sales filters change revenue; expenses remain the full 2026 model for the selected products. Costs have no market allocation, so a single-market selection is not a market P&L.", "amber")
+
     st.markdown("<h2>Profitability — From Revenue to Gross Margin</h2>", unsafe_allow_html=True)
     st.markdown(
         f"<p style='font-size:12px; color:{MID};'>"
@@ -2413,8 +1004,8 @@ with tab3:
         _raw_prod_cost = exp_df["production_cost"].sum() if not exp_df.empty else 0
         _cost_per_pc = (_raw_prod_cost / max(_prim_2026_pieces, 1)) if not exp_df.empty else 0
         st.markdown(
-            f"""<div style='background:#f0ebe3;border-left:4px solid {BROWN};padding:10px 16px;
-            border-radius:6px;margin-bottom:12px;font-size:13px;color:#3a2e24;line-height:1.9;'>
+            f"""<div style='background:#efebf7;border-left:4px solid {BROWN};padding:10px 16px;
+            border-radius:6px;margin-bottom:12px;font-size:13px;color:#51495b;line-height:1.9;'>
             <b>Revenue:</b> 2026 primary invoices only &nbsp;·&nbsp;
             <b>Costs:</b> Expenses {_exp_range} 2026 (all 12 months of annual cost plan) &nbsp;·&nbsp;
             <b>Units sold (2026):</b> {int(_prim_2026_pieces):,} pcs &nbsp;·&nbsp;
@@ -2550,7 +1141,7 @@ with tab3:
         # Add a visible zero-baseline annotation
         fig_wf.add_hline(y=0, line_dash="solid", line_color=BROWN, line_width=2, opacity=0.6)
     fig_wf.update_layout(**layout_wf)
-    st.plotly_chart(fig_wf, use_container_width=True)
+    st.plotly_chart(fig_wf, width="stretch", theme=None, config={"displaylogo": False})
 
     # ── Summary table ─────────────────────────────────────────────────────────
     wf_tbl = pd.DataFrame({
@@ -2558,7 +1149,7 @@ with tab3:
         "Amount (\u20ac)": [f"\u20ac{abs(v):,.0f}" for v in wf_values],
         "% of Gross":  [f"{abs(v)/max(gross,1)*100:.1f}%" for v in wf_values],
     })
-    st.dataframe(wf_tbl, use_container_width=True, hide_index=True)
+    st.dataframe(wf_tbl, width="stretch", hide_index=True)
 
     # ── Revenue vs Cost summary ───────────────────────────────────────────────
     if not prim_f.empty or not exp_df.empty:
@@ -2579,6 +1170,8 @@ with tab3:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
 
+    render_flavour_gallery(prim_f, so_f)
+
     st.markdown("<h2>SKU Performance</h2>", unsafe_allow_html=True)
 
     if not prim_f_nokcat.empty:
@@ -2588,6 +1181,19 @@ with tab4:
             gross=("gross_revenue","sum"),
             net=("net_revenue","sum"),
         ).reset_index().sort_values("gross", ascending=False)
+
+        # Units lead the product comparison; the original revenue view stays below.
+        _sku_units = sku_prim.sort_values("bottles", ascending=True)
+        fig_units = go.Figure(go.Bar(
+            x=_sku_units["bottles"], y=_sku_units["sku_name"], orientation="h",
+            marker_color=[CATEGORY_COLORS.get(get_product_category(n), BROWN) for n in _sku_units["sku_name"]],
+            text=[f"{v:,.0f}" for v in _sku_units["bottles"]], textposition="outside",
+            hovertemplate="<b>%{y}</b><br>%{x:,.0f} units sold<extra></extra>",
+        ))
+        _units_layout = base_layout("Primary units sold by SKU", height=max(300,len(sku_prim)*36))
+        _units_layout["margin"].update(l=220,r=80)
+        fig_units.update_layout(**_units_layout)
+        st.plotly_chart(fig_units,width="stretch",theme=None,config={"displaylogo":False})
 
         # ── Gross Revenue by SKU — horizontal ranked bar ───────────────────────
         _sku_rev_sorted = sku_prim.sort_values("gross", ascending=True)
@@ -2607,27 +1213,18 @@ with tab4:
         l_rev["margin"]["r"] = 80
         l_rev["margin"]["l"] = 220
         fig_rev.update_layout(**l_rev)
-        st.plotly_chart(fig_rev, use_container_width=True)
+        st.plotly_chart(fig_rev, width="stretch", theme=None, config={"displaylogo": False})
 
         # ── SKU summary table ─────────────────────────────────────────────────
         _sku_simple = sku_prim[["sku_name","bottles","gross"]].copy()
         _sku_simple.columns = ["SKU","Pieces","Gross Revenue (\u20ac)"]
         _sku_simple["Pieces"]               = _sku_simple["Pieces"].apply(lambda x: f"{int(x):,}")
         _sku_simple["Gross Revenue (\u20ac)"] = _sku_simple["Gross Revenue (\u20ac)"].apply(lambda x: f"\u20ac{x:,.0f}")
-        st.dataframe(_sku_simple, use_container_width=True, hide_index=True)
+        st.dataframe(_sku_simple, width="stretch", hide_index=True)
     else:
         st.info("No primary sales data available.")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# FOOTER
-# ──────────────────────────────────────────────────────────────────────────────
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown(
-    f"<p style='text-align:center; color:{MID}; font-size:10px;'>"
-    "Niamito Business Intelligence · "
-    "Data: Niamito_Master_Tables.xlsx · "
-    "Built with Streamlit"
-    "</p>",
-    unsafe_allow_html=True,
-)
+
+
+st.markdown('<div class="footer">niamito. &nbsp; Business workspace · Workbook-backed reporting</div>', unsafe_allow_html=True)
